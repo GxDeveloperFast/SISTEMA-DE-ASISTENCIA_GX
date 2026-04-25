@@ -3,84 +3,119 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Acceso al Sistema</title>
+    <title>Acceso Premium - GX</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        .auth-card { transition: all 0.3s ease; }
-        .hidden { display: none; }
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .glass {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .gradient-bg {
+            background: radial-gradient(circle at top right, #1e293b, #0f172a, #020617);
+        }
+        .input-focus {
+            transition: all 0.3s border;
+        }
+        .input-focus:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+        }
         .loader {
-            border: 2px solid #f3f3f3;
-            border-top: 2px solid #3498db;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top: 2px solid white;
             border-radius: 50%;
-            width: 16px;
-            height: 16px;
-            animation: spin 1s linear infinite;
-            display: inline-block;
-            margin-right: 8px;
+            width: 18px;
+            height: 18px;
+            animation: spin 0.8s linear infinite;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
-<body class="bg-slate-900 flex items-center justify-center min-h-screen p-4 font-sans text-slate-900">
+<body class="gradient-bg flex items-center justify-center min-h-screen p-6 overflow-hidden">
 
-    <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md auth-card">
-        <!-- Logo / Título -->
-        <div class="text-center mb-8">
-            <h1 id="auth-title" class="text-3xl font-bold text-slate-800">Bienvenido</h1>
-            <p id="auth-subtitle" class="text-slate-500 mt-2">Ingresa tus credenciales para continuar</p>
+    <!-- Decoración de fondo -->
+    <div class="absolute top-0 left-0 w-64 h-64 bg-blue-600/10 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2"></div>
+    <div class="absolute bottom-0 right-0 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl translate-x-1/3 translate-y-1/3"></div>
+
+    <div class="glass w-full max-w-[440px] rounded-[2rem] shadow-2xl p-10 relative z-10">
+        <!-- Encabezado -->
+        <div class="text-center mb-10">
+            <div class="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-2xl mb-4 shadow-lg shadow-blue-500/30">
+                <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                </svg>
+            </div>
+            <h1 id="auth-title" class="text-3xl font-extrabold text-slate-900 tracking-tight">Sistema GX</h1>
+            <p id="auth-subtitle" class="text-slate-500 mt-2 font-medium">Gestiona tu negocio con inteligencia</p>
         </div>
 
-        <!-- Formulario Principal -->
-        <form id="auth-form" class="space-y-4">
-            <div id="email-field">
-                <label class="block text-sm font-medium text-slate-700 mb-1">Correo Electrónico</label>
-                <input type="email" id="email" required class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="correo@ejemplo.com">
+        <!-- Formulario -->
+        <form id="auth-form" class="space-y-6">
+            <div>
+                <label class="block text-sm font-semibold text-slate-700 mb-2 ml-1">Correo corporativo</label>
+                <input type="email" id="email" required 
+                    class="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl input-focus outline-none text-slate-900 placeholder:text-slate-400" 
+                    placeholder="nombre@empresa.com">
             </div>
 
             <div id="password-field">
-                <label class="block text-sm font-medium text-slate-700 mb-1">Contraseña</label>
-                <input type="password" id="password" required class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="••••••••">
+                <div class="flex justify-between items-center mb-2 ml-1">
+                    <label class="text-sm font-semibold text-slate-700">Contraseña</label>
+                    <button id="forgot-password" type="button" class="text-xs font-bold text-blue-600 hover:text-blue-700 transition-colors">¿La olvidaste?</button>
+                </div>
+                <input type="password" id="password" required 
+                    class="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl input-focus outline-none text-slate-900 placeholder:text-slate-400" 
+                    placeholder="••••••••">
             </div>
 
-            <button type="submit" id="submit-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-lg shadow-md transition-colors flex items-center justify-center">
-                <span id="btn-loader" class="loader hidden"></span>
-                <span id="btn-text">Entrar</span>
+            <button type="submit" id="submit-btn" 
+                class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-4 rounded-2xl shadow-xl shadow-slate-900/10 transition-all active:scale-[0.98] flex items-center justify-center gap-3">
+                <div id="btn-loader" class="loader hidden"></div>
+                <span id="btn-text">Iniciar Sesión</span>
             </button>
         </form>
 
-        <!-- Botones de Acción Secundaria -->
-        <div class="mt-6 space-y-4 text-center">
-            <button id="toggle-view" type="button" class="text-sm text-blue-600 hover:underline block w-full text-center">
-                ¿No tienes cuenta? Regístrate
-            </button>
-            <button id="forgot-password" type="button" class="text-sm text-slate-500 hover:underline block w-full text-center border-t pt-2">
-                ¿Olvidaste tu contraseña?
-            </button>
+        <!-- Footer del Card -->
+        <div class="mt-8 text-center">
+            <p class="text-slate-500 text-sm font-medium">
+                <span id="toggle-text">¿Aún no tienes cuenta?</span>
+                <button id="toggle-view" type="button" class="text-blue-600 font-bold hover:underline ml-1">Crear una ahora</button>
+            </p>
         </div>
 
-        <!-- Mensajes de Error/Éxito -->
-        <div id="message-box" class="mt-4 p-3 rounded-lg hidden text-center text-sm font-medium"></div>
+        <!-- Notificaciones -->
+        <div id="message-box" class="mt-6 p-4 rounded-2xl hidden text-center text-sm font-semibold animate-pulse"></div>
     </div>
 
-    <!-- Firebase SDKs -->
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
 
-        // Configuración segura
-        let firebaseConfig = {};
-        try {
-            // Intentar obtener la configuración del entorno global
-            const configStr = typeof __firebase_config !== 'undefined' ? __firebase_config : '{}';
-            firebaseConfig = JSON.parse(configStr);
-        } catch (e) {
-            console.error("Error al cargar configuración de Firebase:", e);
-        }
+        // ================================================================
+        // 1. CONFIGURACIÓN DE DESTINO (TU PÁGINA)
+        // ================================================================
+        // Aquí es donde el sistema te enviará al entrar.
+        const PAGINA_DESTINO = 'sistem.html'; 
+        // ================================================================
+
+        // 2. TUS CREDENCIALES
+        const firebaseConfig = {
+            apiKey: "AIzaSyDx6ujtmDoNZ3fus4dYnNDoxjz-1KQYDXA",
+            authDomain: "sistema-gx.firebaseapp.com",
+            projectId: "sistema-gx",
+            storageBucket: "sistema-gx.firebasestorage.app",
+            messagingSenderId: "216811985666",
+            appId: "1:216811985666:web:089da99f3aac9350c3401b",
+            measurementId: "G-83SGCF1GFX"
+        };
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
 
-        // Referencias UI
+        // UI Elements
         const authForm = document.getElementById('auth-form');
         const emailInput = document.getElementById('email');
         const passwordInput = document.getElementById('password');
@@ -90,133 +125,106 @@
         const authTitle = document.getElementById('auth-title');
         const authSubtitle = document.getElementById('auth-subtitle');
         const toggleBtn = document.getElementById('toggle-view');
+        const toggleText = document.getElementById('toggle-text');
         const forgotBtn = document.getElementById('forgot-password');
         const msgBox = document.getElementById('message-box');
         const passwordField = document.getElementById('password-field');
 
-        let mode = 'login'; 
+        let mode = 'login';
 
-        function showMessage(text, isError = true) {
+        function showMessage(text, type = 'error') {
             msgBox.textContent = text;
-            msgBox.className = `mt-4 p-3 rounded-lg text-center text-sm font-medium ${isError ? 'bg-red-100 text-red-700 border border-red-200' : 'bg-green-100 text-green-700 border border-green-200'}`;
+            msgBox.className = `mt-6 p-4 rounded-2xl text-center text-sm font-semibold ${
+                type === 'error' ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'
+            }`;
             msgBox.classList.remove('hidden');
         }
 
         function setLoading(isLoading) {
             submitBtn.disabled = isLoading;
             btnLoader.classList.toggle('hidden', !isLoading);
-            btnText.textContent = isLoading ? "Procesando..." : (mode === 'login' ? "Entrar" : (mode === 'register' ? "Registrarme" : "Enviar Correo"));
+            btnText.textContent = isLoading ? "Verificando..." : (mode === 'login' ? "Iniciar Sesión" : (mode === 'register' ? "Crear Cuenta" : "Enviar Enlace"));
         }
 
-        // Navegación entre modos
-        toggleBtn.onclick = (e) => {
-            e.preventDefault();
+        // Navegación de interfaz
+        toggleBtn.onclick = () => {
             msgBox.classList.add('hidden');
             if (mode !== 'login') {
                 mode = 'login';
-                authTitle.textContent = "Bienvenido";
-                authSubtitle.textContent = "Ingresa tus credenciales para continuar";
-                btnText.textContent = "Entrar";
-                toggleBtn.textContent = "¿No tienes cuenta? Regístrate";
+                authTitle.textContent = "Sistema GX";
+                authSubtitle.textContent = "Gestiona tu negocio con inteligencia";
+                toggleText.textContent = "¿Aún no tienes cuenta?";
+                toggleBtn.textContent = "Crear una ahora";
                 passwordField.classList.remove('hidden');
                 passwordInput.required = true;
             } else {
                 mode = 'register';
-                authTitle.textContent = "Crear Cuenta";
-                authSubtitle.textContent = "Regístrate para acceder al sistema";
-                btnText.textContent = "Registrarme";
-                toggleBtn.textContent = "¿Ya tienes cuenta? Inicia sesión";
+                authTitle.textContent = "Registro GX";
+                authSubtitle.textContent = "Únete a nuestra plataforma profesional";
+                toggleText.textContent = "¿Ya eres miembro?";
+                toggleBtn.textContent = "Entrar aquí";
                 passwordField.classList.remove('hidden');
                 passwordInput.required = true;
             }
         };
 
-        forgotBtn.onclick = (e) => {
-            e.preventDefault();
+        forgotBtn.onclick = () => {
             mode = 'reset';
             authTitle.textContent = "Recuperar Acceso";
-            authSubtitle.textContent = "Enviaremos un correo para cambiar tu clave";
-            btnText.textContent = "Enviar Correo";
+            authSubtitle.textContent = "Enviaremos un enlace a tu correo";
             passwordField.classList.add('hidden');
             passwordInput.required = false;
-            toggleBtn.textContent = "Volver al inicio de sesión";
+            toggleText.textContent = "¿Recordaste tu clave?";
+            toggleBtn.textContent = "Volver al inicio";
             msgBox.classList.add('hidden');
         };
 
-        // Función de redirección segura
-        function redirectToDashboard() {
-            try {
-                // Forzamos una ruta relativa válida para evitar el error de 'Location'
-                window.location.replace('./gx.html');
-            } catch (err) {
-                console.error("Fallo de redirección:", err);
-                window.location.href = 'gx.html';
-            }
+        // Lógica de Redirección
+        function irAlSitio() {
+            console.log("Acceso concedido. Redirigiendo...");
+            window.location.assign(PAGINA_DESTINO);
         }
 
-        // Manejo de acciones con reintentos
-        async function handleAuthAction(actionFn) {
-            let delay = 1000;
-            for (let i = 0; i < 5; i++) {
-                try {
-                    return await actionFn();
-                } catch (error) {
-                    if (i === 4 || (error.code && error.code.startsWith('auth/'))) throw error;
-                    await new Promise(res => setTimeout(res, delay));
-                    delay *= 2;
-                }
-            }
-        }
-
+        // Manejo del Formulario
         authForm.onsubmit = async (e) => {
             e.preventDefault();
             const email = emailInput.value;
             const password = passwordInput.value;
-            msgBox.classList.add('hidden');
             setLoading(true);
+            msgBox.classList.add('hidden');
 
             try {
                 if (mode === 'login') {
-                    await handleAuthAction(() => signInWithEmailAndPassword(auth, email, password));
-                    redirectToDashboard();
+                    await signInWithEmailAndPassword(auth, email, password);
+                    irAlSitio();
                 } else if (mode === 'register') {
-                    await handleAuthAction(() => createUserWithEmailAndPassword(auth, email, password));
-                    showMessage("¡Cuenta creada! Redirigiendo...", false);
-                    setTimeout(redirectToDashboard, 1000);
+                    await createUserWithEmailAndPassword(auth, email, password);
+                    showMessage("¡Registro exitoso! Iniciando...", 'success');
+                    setTimeout(irAlSitio, 1500);
                 } else if (mode === 'reset') {
-                    await handleAuthAction(() => sendPasswordResetEmail(auth, email));
-                    showMessage("Correo enviado. Revisa tu bandeja de entrada.", false);
+                    await sendPasswordResetEmail(auth, email);
+                    showMessage("Enlace de recuperación enviado.", 'success');
                 }
             } catch (error) {
-                console.error("Auth Error:", error.code);
-                let errorMsg = "Error en la solicitud.";
-                if (error.code === 'auth/invalid-credential') errorMsg = "Credenciales incorrectas.";
-                if (error.code === 'auth/email-already-in-use') errorMsg = "Correo ya registrado.";
-                showMessage(errorMsg);
+                console.error("Firebase Error:", error.code);
+                let msg = "Error al conectar con el servidor.";
+                if (error.code === 'auth/invalid-credential') msg = "Correo o contraseña no válidos.";
+                if (error.code === 'auth/email-already-in-use') msg = "Este correo ya está registrado.";
+                if (error.code === 'auth/weak-password') msg = "Usa una contraseña más segura.";
+                if (error.code === 'auth/too-many-requests') msg = "Demasiados intentos. Espera un momento.";
+                showMessage(msg, 'error');
             } finally {
                 setLoading(false);
             }
         };
 
-        // Inicialización y persistencia
+        // Vigilante de Sesión
         onAuthStateChanged(auth, (user) => {
             if (user && mode !== 'reset') {
-                console.log("Sesión activa detectada:", user.email);
-                redirectToDashboard();
+                irAlSitio();
             }
         });
 
-        async function startApp() {
-            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                try {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } catch (e) { 
-                    console.warn("Token de sesión inicial no válido o expirado."); 
-                }
-            }
-        }
-
-        startApp();
     </script>
 </body>
 </html>
