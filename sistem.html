@@ -4,353 +4,313 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SISTEMA GX - Gestión de Asistencia</title>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- SheetJS para Excel -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <!-- Firebase SDKs -->
+    
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
 
-        // CONFIGURACIÓN GLOBAL
-        const firebaseConfig = JSON.parse(__firebase_config);
+        // Configuración Global
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        const appId = "sistema-gx"; // Según tus reglas de seguridad
 
-        // VARIABLES DE ESTADO
+        // Variables de Estado
         let personal = [];
         let historial = [];
-        let currentIdx = -1;
-        let editIdx = -1;
         let user = null;
-
+        let currentIdx = -1;
         const MESES = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"];
-        const DIAS = ["DOM", "LUN", "MAR", "MIE", "JUE", "VIE", "SAB"];
-        const FERIADOS = ["1-0", "1-4", "29-5", "28-6", "29-6", "6-7", "30-7", "8-9", "1-10", "8-11", "9-11", "25-11"];
-
-        let mAct = new Date().getMonth();
-        let aAct = new Date().getFullYear();
+        const d = new Date();
+        let mAct = d.getMonth();
+        let aAct = d.getFullYear();
+        const FERIADOS = ["1-0", "28-6", "29-6", "30-7", "25-11"]; // Ejemplo: 1 de Enero, etc.
 
         // --- LÓGICA DE FIREBASE ---
-
         async function initAuth() {
             try {
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
-            } catch (error) {
-                console.error("Error de Auth:", error);
+                await signInAnonymously(auth);
+            } catch (err) {
+                console.error("Auth error:", err);
             }
         }
 
         onAuthStateChanged(auth, (u) => {
-            user = u;
-            if (user) {
-                setupRealtimeSync();
+            if (u) {
+                user = u;
+                listenData();
             }
         });
 
-        function setupRealtimeSync() {
-            // Documento de datos principales (Personal e Historial)
-            const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'profile', 'data');
-            
-            onSnapshot(docRef, (snapshot) => {
-                if (snapshot.exists()) {
-                    const cloudData = snapshot.data();
-                    personal = cloudData.personal || [];
-                    historial = cloudData.historial || [];
-                } else {
-                    personal = [];
-                    historial = [];
+        function listenData() {
+            if (!user) return;
+            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'config');
+            onSnapshot(docRef, (snap) => {
+                if (snap.exists()) {
+                    const data = snap.data();
+                    personal = data.personal || [];
+                    historial = data.historial || [];
+                    renderPersonal();
+                    renderHistorial();
+                    updateUI();
                 }
-                renderPersonal();
-                renderAsistencia();
-                renderHistorial();
-            }, (error) => {
-                console.error("Error en Snapshot:", error);
-            });
+            }, (error) => console.error("Error en snapshot:", error));
         }
 
         async function sync() {
             if (!user) return;
-            const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'profile', 'data');
-            try {
-                await setDoc(docRef, { personal, historial }, { merge: true });
-            } catch (error) {
-                console.error("Error guardando en Firebase:", error);
-            }
+            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'config');
+            await setDoc(docRef, { personal, historial }, { merge: true });
         }
 
-        // --- LÓGICA DE NEGOCIO (Mantenida según instrucciones) ---
+        // --- FUNCIONES AUXILIARES ---
+        function dMins(inTime, outTime) {
+            if (!inTime || !outTime || inTime === "00:00") return 0;
+            const [h1, m1] = inTime.split(':').map(Number);
+            const [h2, m2] = outTime.split(':').map(Number);
+            let diff = (h2 * 60 + m2) - (h1 * 60 + m1);
+            return diff < 0 ? diff + 1440 : diff;
+        }
 
         function getHorarioTeorico(sede, tipo, diaSem) {
-            // PIURA
-            if(sede === "Piura") {
-                if(tipo === "OPERARIO") {
-                    if(diaSem === 3) return { in: "07:30", out: "17:00", refri: 0.5 }; // Miércoles
-                    if(diaSem === 6) return { in: "07:30", out: "12:30", refri: 0 };   // Sábado
-                    if(diaSem === 0) return { in: "00:00", out: "00:00", refri: 0 };   // Domingo
-                    return { in: "07:30", out: "16:30", refri: 0.5 }; // L, M, J, V
-                } else { // ADMINISTRATIVO
-                    if(diaSem === 3) return { in: "08:00", out: "17:30", refri: 1 };
-                    if(diaSem === 6) return { in: "08:00", out: "13:00", refri: 0 };
-                    if(diaSem === 0) return { in: "00:00", out: "00:00", refri: 0 };
-                    return { in: "08:00", out: "17:00", refri: 1 };
-                }
-            }
-            // MOCHE Y CAJAMARCA
-            else { 
-                if(tipo === "OPERARIO") {
-                    if(diaSem === 3) return { in: "07:30", out: "17:30", refri: 1 };
-                    if(diaSem === 6) return { in: "07:30", out: "12:30", refri: 0 };
-                    if(diaSem === 0) return { in: "00:00", out: "00:00", refri: 0 };
-                    return { in: "07:30", out: "17:00", refri: 1 };
-                } else { // ADMINISTRATIVO
-                    if(diaSem === 6) return { in: "08:00", out: "13:30", refri: 0 };
-                    if(diaSem === 0) return { in: "00:00", out: "00:00", refri: 0 };
-                    return { in: "08:00", out: "17:30", refri: 1 };
-                }
-            }
+            if (diaSem === 0) return { in: "00:00", out: "00:00", refri: 0 };
+            if (tipo === "ADMINISTRATIVO") return { in: "08:00", out: "18:00", refri: 1 };
+            // Operarios por defecto
+            return { in: "07:30", out: "17:00", refri: 0.5 };
         }
 
-        function dMins(t1, t2) {
-            if(!t1 || !t2) return 0;
-            const [h1, m1] = t1.split(':').map(Number);
-            const [h2, m2] = t2.split(':').map(Number);
-            return (h2 * 60 + m2) - (h1 * 60 + m1);
+        // --- RENDERIZADO Y UI ---
+        function updateUI() {
+            document.getElementById('mes-actual-label').innerText = `${MESES[mAct]} ${aAct}`;
+            document.getElementById('count-personal').innerText = `${personal.length} Trabajadores`;
         }
-
-        // --- UI Y DOM ---
 
         window.showSection = (id) => {
             document.querySelectorAll('section').forEach(s => s.classList.add('hidden'));
             document.getElementById(id).classList.remove('hidden');
-            if(id === 'asistencia') renderAsistencia();
-            if(id === 'personal') renderPersonal();
-            if(id === 'historial') renderHistorial();
+            document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+            document.getElementById('nav-' + id).classList.add('active');
         };
 
-        window.openModal = () => {
-            editIdx = -1;
-            document.getElementById('modal-personal-title').innerText = "Nuevo Trabajador";
+        window.renderPersonal = () => {
+            const list = document.getElementById('lista-personal');
+            const groupsContainer = document.getElementById('grupos-asistencia');
+            list.innerHTML = "";
+            groupsContainer.innerHTML = "";
+
+            const sedes = ["Moche", "Piura", "Cajamarca"];
+            
+            sedes.forEach(sede => {
+                const filt = personal.filter(p => p.sede === sede);
+                // Render en Gestión
+                filt.forEach((p, realIdx) => {
+                    const idx = personal.indexOf(p);
+                    list.innerHTML += `
+                        <div class="glass-card p-6 flex flex-col justify-between">
+                            <div>
+                                <div class="flex justify-between items-start mb-4">
+                                    <span class="text-[10px] font-black bg-slate-100 px-2 py-1 rounded text-slate-500 uppercase">${p.tipo}</span>
+                                    <div class="flex gap-2">
+                                        <button onclick="editPersonal(${idx})" class="text-slate-400 hover:text-blue-500"><i class="fas fa-edit"></i></button>
+                                        <button onclick="deletePersonal(${idx})" class="text-slate-400 hover:text-rose-500"><i class="fas fa-trash"></i></button>
+                                    </div>
+                                </div>
+                                <h4 class="font-black text-slate-800 text-lg leading-tight uppercase">${p.apePat} ${p.apeMat}, ${p.nombre}</h4>
+                                <p class="text-xs text-slate-400 mt-1 font-bold">DNI: ${p.dni}</p>
+                            </div>
+                            <div class="mt-6 pt-4 border-t border-slate-50 flex items-center gap-2">
+                                <i class="fas fa-map-marker-alt text-slate-300"></i>
+                                <span class="text-xs font-bold text-slate-600">${p.sede}</span>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                // Render en Asistencia
+                if(filt.length > 0) {
+                    const groupHtml = `
+                        <div class="mb-8">
+                            <h3 class="text-xs font-black text-slate-400 tracking-[0.2em] mb-4 uppercase flex items-center gap-3">
+                                <span class="w-8 h-[2px] bg-slate-200"></span> SEDE ${sede}
+                            </h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                ${filt.map(p => {
+                                    const idx = personal.indexOf(p);
+                                    return `
+                                        <div onclick="openAsistencia(${idx})" class="glass-card p-5 cursor-pointer hover:border-slate-400 transition-all group">
+                                            <div class="flex justify-between items-center">
+                                                <div>
+                                                    <h4 class="font-bold text-slate-800 group-hover:text-blue-600 transition-colors uppercase text-sm">${p.apePat} ${p.nombre}</h4>
+                                                    <p class="text-[10px] text-slate-400 font-bold">${p.dni}</p>
+                                                </div>
+                                                <i class="fas fa-chevron-right text-slate-200 group-hover:translate-x-1 transition-transform"></i>
+                                            </div>
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                        </div>
+                    `;
+                    groupsContainer.innerHTML += groupHtml;
+                }
+            });
+        };
+
+        // --- GESTIÓN DE PERSONAL ---
+        window.openModal = (idx = -1) => {
+            currentIdx = idx;
             document.getElementById('form-personal').reset();
-            document.getElementById('modal-personal').classList.remove('hidden');
+            document.getElementById('modal-personal-title').innerText = idx === -1 ? "NUEVO TRABAJADOR" : "EDITAR TRABAJADOR";
+            if (idx !== -1) {
+                const p = personal[idx];
+                document.getElementById('f-nombre').value = p.nombre;
+                document.getElementById('f-apePat').value = p.apePat;
+                document.getElementById('f-apeMat').value = p.apeMat;
+                document.getElementById('f-dni').value = p.dni;
+                document.getElementById('f-sede').value = p.sede;
+                document.getElementById('f-tipo').value = p.tipo;
+            }
+            document.getElementById('modal-personal').style.display = 'flex';
         };
 
-        window.closeModal = () => document.getElementById('modal-personal').classList.add('hidden');
+        window.closeModal = () => document.getElementById('modal-personal').style.display = 'none';
 
-        window.savePersonal = () => {
-            const data = {
+        window.savePersonal = async () => {
+            const p = {
                 nombre: document.getElementById('f-nombre').value,
                 apePat: document.getElementById('f-apePat').value,
                 apeMat: document.getElementById('f-apeMat').value,
                 dni: document.getElementById('f-dni').value,
                 sede: document.getElementById('f-sede').value,
-                tipo: document.getElementById('f-tipo').value
+                tipo: document.getElementById('f-tipo').value,
+                registroAsis: currentIdx === -1 ? [] : personal[currentIdx].registroAsis
             };
-            if(!data.nombre || !data.dni) return;
-
-            if(editIdx === -1) {
-                data.registroAsis = [];
-                personal.push(data);
-            } else {
-                personal[editIdx] = { ...personal[editIdx], ...data };
-            }
-            sync(); closeModal();
+            if (currentIdx === -1) personal.push(p);
+            else personal[currentIdx] = p;
+            await sync();
+            closeModal();
         };
 
-        window.editPersonal = (i) => {
-            editIdx = i; const p = personal[i];
-            document.getElementById('modal-personal-title').innerText = "Editar Trabajador";
-            document.getElementById('f-nombre').value = p.nombre;
-            document.getElementById('f-apePat').value = p.apePat;
-            document.getElementById('f-apeMat').value = p.apeMat || "";
-            document.getElementById('f-dni').value = p.dni;
-            document.getElementById('f-sede').value = p.sede;
-            document.getElementById('f-tipo').value = p.tipo;
-            document.getElementById('modal-personal').classList.remove('hidden');
-        };
+        window.editPersonal = (idx) => openModal(idx);
+        window.deletePersonal = async (idx) => { if(confirm("¿Eliminar trabajador?")) { personal.splice(idx, 1); await sync(); } };
 
-        window.deletePersonal = (i) => { 
-            if(confirm("¿Eliminar trabajador?")) { 
-                personal.splice(i,1); 
-                sync(); 
-            } 
-        };
-
-        window.renderPersonal = () => {
-            const list = document.getElementById('lista-personal');
-            list.innerHTML = personal.map((p, i) => `
-                <div class="glass-card p-5 flex justify-between items-center border-l-4 ${p.sede==='Moche'?'border-blue-500':p.sede==='Piura'?'border-emerald-500':'border-amber-500'}">
-                    <div>
-                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-tighter">${p.sede} • ${p.tipo}</p>
-                        <h4 class="font-bold text-slate-800 text-lg">${p.apePat} ${p.apeMat}, ${p.nombre}</h4>
-                        <p class="text-xs text-slate-500 font-medium">DNI: ${p.dni}</p>
-                    </div>
-                    <div class="flex gap-2">
-                        <button onclick="editPersonal(${i})" class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"><i class="fas fa-edit"></i></button>
-                        <button onclick="deletePersonal(${i})" class="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"><i class="fas fa-trash"></i></button>
-                    </div>
-                </div>
-            `).join('');
-        };
-
-        window.renderAsistencia = () => {
-            document.getElementById('mes-actual-label').innerText = `${MESES[mAct]} ${aAct}`;
-            const cont = document.getElementById('grupos-asistencia'); cont.innerHTML = '';
-            document.getElementById('count-personal').innerText = `${personal.length} Trabajadores`;
-
-            ["Moche", "Piura", "Cajamarca"].forEach(s => {
-                const filt = personal.filter(p => p.sede === s);
-                if(!filt.length) return;
-                
-                cont.innerHTML += `
-                    <div class="glass-card overflow-hidden mb-6">
-                        <div class="p-6 bg-slate-900 text-white flex justify-between items-center">
-                            <h3 class="font-bold tracking-widest">${s.toUpperCase()}</h3>
-                            <span class="text-[10px] bg-white/20 px-3 py-1 rounded-full">${filt.length} Personal</span>
-                        </div>
-                        <div class="overflow-x-auto">
-                            <table class="w-full">
-                                <thead><tr class="bg-slate-50 text-[10px] uppercase text-slate-400"><th class="text-left px-6 py-3">Colaborador</th><th class="text-center">Deuda (H)</th><th class="text-right px-6">Acción</th></tr></thead>
-                                <tbody class="divide-y">${filt.map(p => {
-                                    const idxGlobal = personal.indexOf(p);
-                                    return `<tr>
-                                        <td class="px-6 py-4 font-bold text-slate-700">${p.apePat} ${p.apeMat}, ${p.nombre}</td>
-                                        <td class="text-center font-black text-orange-600">${calcularResumen(p).debe}h</td>
-                                        <td class="px-6 py-4 text-right"><button onclick="openAsistenciaModal(${idxGlobal})" class="bg-blue-600 text-white px-6 py-2 rounded-xl text-[10px] font-black tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-200">ASISTENCIA</button></td>
-                                    </tr>`}).join('')}</tbody>
-                            </table>
-                        </div>
-                    </div>`;
-            });
-        };
-
-        window.openAsistenciaModal = (idx) => {
-            currentIdx = idx; const p = personal[idx];
+        // --- CONTROL DE ASISTENCIA ---
+        window.openAsistencia = (idx) => {
+            currentIdx = idx;
+            const p = personal[idx];
             document.getElementById('at-nombre-tit').innerText = `${p.apePat} ${p.apeMat}, ${p.nombre}`;
-            const body = document.getElementById('asistencia-mes-body'); body.innerHTML = '';
-            const diasMes = new Date(aAct, mAct+1, 0).getDate();
+            const body = document.getElementById('asistencia-mes-body');
+            body.innerHTML = "";
             
-            for(let d=1; d<=diasMes; d++){
-                const fe = new Date(aAct, mAct, d); const diaSem = fe.getDay();
-                const isFer = FERIADOS.includes(`${d}-${mAct}`);
-                const teorico = getHorarioTeorico(p.sede, p.tipo, diaSem);
+            const diasMes = new Date(aAct, mAct + 1, 0).getDate();
+            for (let i = 1; i <= diasMes; i++) {
+                const fe = new Date(aAct, mAct, i);
+                const diaSem = fe.getDay();
+                const r = (p.registroAsis && p.registroAsis[i - 1]) ? p.registroAsis[i - 1] : { status: 'lab', in: "00:00", out: "00:00", refri: 0, h25: 0, h35: 0, h100: 0, debe: 0, sedeApoyo: p.sede };
                 
-                const r = (p.registroAsis && p.registroAsis[d-1]) || { 
-                    status: (diaSem===0 || isFer?'fer':'lab'), 
-                    sedeApoyo: "",
-                    in: (diaSem===0 || isFer) ? "" : teorico.in, 
-                    out: (diaSem===0 || isFer) ? "" : teorico.out, 
-                    refri: teorico.refri, perm: 0, h25: 0, h35: 0, h100: 0, debe: 0 
-                };
-                
-                const tr = document.createElement('tr');
-                tr.className = "hover:bg-slate-50 transition-colors";
-                tr.innerHTML = `
-                    <td class="p-3 text-[11px] font-black border-b ${diaSem===0 || isFer ?'text-rose-500 bg-rose-50/50':'text-slate-500'}">${d} ${DIAS[diaSem]}</td>
-                    <td class="border-b"><select class="text-[10px] font-bold status-sel w-24 border rounded-lg p-1 bg-white" onchange="calcFila(this)"><option value="lab" ${r.status==='lab'?'selected':''}>ASISTIO</option><option value="fal" ${r.status==='fal'?'selected':''}>FALTA</option><option value="vac" ${r.status==='vac'?'selected':''}>VAC</option><option value="dm" ${r.status==='dm'?'selected':''}>D.MEDICO</option><option value="perm" ${r.status==='perm'?'selected':''}>PERMISO</option><option value="fer" ${r.status==='fer'?'selected':''}>FER/DOM</option></select></td>
-                    <td class="border-b"><select class="text-[10px] sede-apoyo w-24 border rounded-lg p-1 bg-white" onchange="calcFila(this)"><option value="">Ninguna</option><option value="Moche" ${r.sedeApoyo==='Moche'?'selected':''}>Moche</option><option value="Piura" ${r.sedeApoyo==='Piura'?'selected':''}>Piura</option><option value="Cajamarca" ${r.sedeApoyo==='Cajamarca'?'selected':''}>Cajamarca</option></select></td>
-                    <td class="border-b"><input type="time" class="text-[11px] t-in w-full border-none bg-transparent" value="${r.in}" onchange="calcFila(this)"></td>
-                    <td class="border-b"><input type="time" class="text-[11px] t-out w-full border-none bg-transparent" value="${r.out}" onchange="calcFila(this)"></td>
-                    <td class="border-b"><input type="number" step="0.5" class="text-[11px] t-ref w-12 border rounded p-1" value="${r.refri}" onchange="calcFila(this)"></td>
-                    <td class="border-b"><input type="number" step="0.5" class="text-[11px] t-perm w-12 border rounded p-1" value="${r.perm || 0}" onchange="calcFila(this)"></td>
-                    <td class="h25 border-b text-[11px] font-bold text-blue-600 text-center">${r.h25 || 0}</td>
-                    <td class="h35 border-b text-[11px] font-bold text-indigo-600 text-center">${r.h35 || 0}</td>
-                    <td class="h100 border-b text-[11px] font-bold text-emerald-600 text-center">${r.h100 || 0}</td>
-                    <td class="h-debe border-b text-[11px] font-bold text-orange-600 text-center">${r.debe || 0}</td>`;
-                body.appendChild(tr);
-                calcFila(tr.querySelector('.status-sel'));
+                body.innerHTML += `
+                    <tr class="text-center group hover:bg-slate-50 transition-colors">
+                        <td class="p-4 text-left font-bold text-slate-500 text-xs">${i} ${["DOM", "LUN", "MAR", "MIE", "JUE", "VIE", "SAB"][diaSem]}</td>
+                        <td>
+                            <select class="status-sel bg-transparent border-none font-bold text-xs focus:ring-0" onchange="calcFila(this)">
+                                <option value="lab" ${r.status === 'lab' ? 'selected' : ''}>LABORÓ</option>
+                                <option value="fal" ${r.status === 'fal' ? 'selected' : ''}>FALTA</option>
+                                <option value="fer" ${r.status === 'fer' ? 'selected' : ''}>FER/DOM</option>
+                                <option value="perm" ${r.status === 'perm' ? 'selected' : ''}>PERMISO</option>
+                                <option value="vac" ${r.status === 'vac' ? 'selected' : ''}>VACACIONES</option>
+                                <option value="susp" ${r.status === 'susp' ? 'selected' : ''}>SUSPENSIÓN</option>
+                            </select>
+                        </td>
+                        <td><input type="text" class="t-sede w-16 text-center border-none bg-transparent text-[10px] font-bold" value="${r.sedeApoyo || p.sede}"></td>
+                        <td><input type="time" class="t-in w-24 border-none bg-transparent text-xs font-medium" value="${r.in}" onchange="calcFila(this)"></td>
+                        <td><input type="time" class="t-out w-24 border-none bg-transparent text-xs font-medium" value="${r.out}" onchange="calcFila(this)"></td>
+                        <td><input type="number" step="0.5" class="t-ref w-12 border-none bg-transparent text-xs text-center" value="${r.refri}" onchange="calcFila(this)"></td>
+                        <td><input type="number" step="0.5" class="t-perm w-12 border-none bg-transparent text-xs text-center" value="${r.perm || 0}" onchange="calcFila(this)"></td>
+                        <td class="font-bold text-blue-600 t-25 text-xs">${r.h25 || 0}</td>
+                        <td class="font-bold text-blue-600 t-35 text-xs">${r.h35 || 0}</td>
+                        <td class="font-bold text-blue-600 t-100 text-xs">${r.h100 || 0}</td>
+                        <td class="font-bold text-orange-600 t-debe text-xs">${r.debe || 0}</td>
+                    </tr>
+                `;
             }
             document.getElementById('modal-asistencia').classList.remove('hidden');
         };
 
+        window.calcFila = (el) => {
+            const row = el.closest('tr');
+            const status = row.querySelector('.status-sel').value;
+            const inT = row.querySelector('.t-in').value;
+            const outT = row.querySelector('.t-out').value;
+            const ref = parseFloat(row.querySelector('.t-ref').value || 0);
+            const perm = parseFloat(row.querySelector('.t-perm').value || 0);
+            const p = personal[currentIdx];
+            const dStr = row.querySelector('td').innerText.split(' ')[0];
+            const diaSem = new Date(aAct, mAct, parseInt(dStr)).getDay();
+            const teo = getHorarioTeorico(row.querySelector('.t-sede').value, p.tipo, diaSem);
+            
+            let h25 = 0, h35 = 0, h100 = 0, debe = 0;
+            const trabajadas = (dMins(inT, outT) / 60) - ref;
+
+            if (status === 'lab') {
+                const horasTeoricas = (dMins(teo.in, teo.out) / 60) - teo.refri;
+                const efectivo = trabajadas + perm;
+                if (efectivo > horasTeoricas) {
+                    let extra = efectivo - horasTeoricas;
+                    h25 = Math.min(2, extra);
+                    h35 = Math.max(0, extra - 2);
+                } else if (efectivo < horasTeoricas) {
+                    debe = horasTeoricas - efectivo;
+                }
+            } else if (status === 'fal') {
+                debe = (dMins(teo.in, teo.out) / 60) - teo.refri;
+            } else if (status === 'fer') {
+                h100 = trabajadas > 0 ? trabajadas : 0;
+            }
+
+            row.querySelector('.t-25').innerText = h25.toFixed(1);
+            row.querySelector('.t-35').innerText = h35.toFixed(1);
+            row.querySelector('.t-100').innerText = h100.toFixed(1);
+            row.querySelector('.t-debe').innerText = debe.toFixed(1);
+        };
+
         window.closeAsistenciaModal = () => document.getElementById('modal-asistencia').classList.add('hidden');
 
-        window.calcFila = (el) => {
-            const tr = el.closest('tr');
-            const dStr = tr.querySelector('td').innerText.split(' ')[0];
-            const diaSem = new Date(aAct, mAct, parseInt(dStr)).getDay();
-            const p = personal[currentIdx];
-            
-            const sedeEfectiva = tr.querySelector('.sede-apoyo').value || p.sede;
-            const teorico = getHorarioTeorico(sedeEfectiva, p.tipo, diaSem);
-            
-            const st = tr.querySelector('.status-sel').value;
-            const tIn = tr.querySelector('.t-in').value, tOut = tr.querySelector('.t-out').value;
-            const ref = parseFloat(tr.querySelector('.t-ref').value) || 0, perm = parseFloat(tr.querySelector('.t-perm').value) || 0;
-            
-            let h25=0, h35=0, h100=0, de=0;
-
-            if(st === 'fal') {
-                let jEsp = dMins(teorico.in, teorico.out) - (teorico.refri * 60);
-                de = Math.max(0, jEsp / 60).toFixed(1);
-            } else if(st === 'dm' || st === 'vac') {
-                // Sin deuda ni extras
-            } else {
-                if(tIn && tOut && tIn !== "00:00" && tOut !== "00:00") {
-                    let mEf = dMins(tIn, tOut) - (ref * 60);
-                    if(st === 'fer') {
-                        h100 = (mEf / 60).toFixed(1);
-                    } else {
-                        let jEsp = dMins(teorico.in, teorico.out) - (teorico.refri * 60);
-                        let balance = (mEf + (perm * 60)) - jEsp;
-                        if(balance > 0) { 
-                            h25 = Math.min(2, balance/60).toFixed(1); 
-                            h35 = Math.max(0, (balance/60) - 2).toFixed(1); 
-                        } else {
-                            de = Math.abs(balance/60).toFixed(1);
-                        }
-                    }
-                } else if (st === 'lab' || st === 'perm') {
-                    let jEsp = dMins(teorico.in, teorico.out) - (teorico.refri * 60);
-                    de = (jEsp / 60).toFixed(1);
-                }
-            }
-            tr.querySelector('.h25').innerText = h25; 
-            tr.querySelector('.h35').innerText = h35; 
-            tr.querySelector('.h100').innerText = h100; 
-            tr.querySelector('.h-debe').innerText = de;
+        window.guardarAsistenciaMes = async () => {
+            const rows = document.querySelectorAll('#asistencia-mes-body tr');
+            const registro = [];
+            rows.forEach(row => {
+                registro.push({
+                    status: row.querySelector('.status-sel').value,
+                    sedeApoyo: row.querySelector('.t-sede').value,
+                    in: row.querySelector('.t-in').value,
+                    out: row.querySelector('.t-out').value,
+                    refri: parseFloat(row.querySelector('.t-ref').value || 0),
+                    perm: parseFloat(row.querySelector('.t-perm').value || 0),
+                    h25: parseFloat(row.querySelector('.t-25').innerText),
+                    h35: parseFloat(row.querySelector('.t-35').innerText),
+                    h100: parseFloat(row.querySelector('.t-100').innerText),
+                    debe: parseFloat(row.querySelector('.t-debe').innerText)
+                });
+            });
+            personal[currentIdx].registroAsis = registro;
+            await sync();
+            closeAsistenciaModal();
         };
 
-        window.guardarAsistenciaMes = () => {
-            personal[currentIdx].registroAsis = Array.from(document.querySelectorAll('#asistencia-mes-body tr')).map(r => ({
-                status: r.querySelector('.status-sel').value, 
-                sedeApoyo: r.querySelector('.sede-apoyo').value,
-                in: r.querySelector('.t-in').value, 
-                out: r.querySelector('.t-out').value,
-                refri: parseFloat(r.querySelector('.t-ref').value) || 0, 
-                perm: parseFloat(r.querySelector('.t-perm').value) || 0,
-                h25: parseFloat(r.querySelector('.h25').innerText) || 0, 
-                h35: parseFloat(r.querySelector('.h35').innerText) || 0, 
-                h100: parseFloat(r.querySelector('.h100').innerText) || 0, 
-                debe: parseFloat(r.querySelector('.h-debe').innerText) || 0
-            })); 
-            sync(); closeAsistenciaModal();
-        };
-
-        window.calcularResumen = (p) => {
-            let d = 0; if(p.registroAsis) p.registroAsis.forEach(x => d += (x.debe || 0));
-            return { debe: d.toFixed(1) };
-        };
-
-        window.cerrarMes = () => {
-            if(!confirm("¿Cerrar mes y archivar?")) return;
-            historial.unshift({ id: Date.now(), mes: MESES[mAct], anio: aAct, timestamp: new Date().toLocaleString(), data: JSON.parse(JSON.stringify(personal)) });
-            personal.forEach(p => p.registroAsis = []);
-            sync(); showSection('historial');
-        };
-
+        // --- HISTORIAL Y EXCEL ---
         window.renderHistorial = () => {
             const list = document.getElementById('lista-historial');
             const term = (document.getElementById('search-historial').value || "").toLowerCase();
             const filt = historial.filter(h => (h.mes + " " + h.anio).toLowerCase().includes(term));
-            if(!filt.length) { list.innerHTML = '<p class="text-slate-400 italic">No hay historial.</p>'; return; }
+            if (!filt.length) { list.innerHTML = '<p class="text-slate-400 italic">No hay historial.</p>'; return; }
             list.innerHTML = filt.map(h => `
                 <div class="glass-card p-6 flex justify-between items-center">
                     <div><h4 class="font-black text-slate-800 text-lg">${h.mes} ${h.anio}</h4><p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Cerrado: ${h.timestamp}</p></div>
@@ -361,8 +321,8 @@
                 </div>`).join('');
         };
 
-        window.eliminarHistorico = (id) => { if(confirm("¿Eliminar?")) { historial = historial.filter(x => x.id !== id); sync(); } };
-        window.descargarHistorico = (id) => { const item = historial.find(x => x.id === id); if(item) exportToExcel(item.data, item.mes, item.anio); };
+        window.eliminarHistorico = async (id) => { if (confirm("¿Eliminar este registro del archivo?")) { historial = historial.filter(x => x.id !== id); await sync(); } };
+        window.descargarHistorico = (id) => { const item = historial.find(x => x.id === id); if (item) window.exportToExcel(item.data, item.mes, item.anio); };
 
         window.exportToExcel = (customData = null, customMes = null, customAnio = null) => {
             const targetData = customData || personal;
@@ -432,7 +392,23 @@
                 });
                 XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dataS), sede);
             });
-            XLSX.writeFile(wb, `Planilla_${mLabel}.xlsx`);
+            XLSX.writeFile(wb, `Planilla_${mLabel}_${aLabel}.xlsx`);
+        };
+
+        window.cerrarMes = async () => {
+            if (confirm(`¿Cerrar el mes de ${MESES[mAct]} ${aAct} y archivarlo? El registro actual se reiniciará.`)) {
+                const nuevoH = {
+                    id: Date.now(),
+                    mes: MESES[mAct],
+                    anio: aAct,
+                    timestamp: new Date().toLocaleString(),
+                    data: JSON.parse(JSON.stringify(personal))
+                };
+                historial.push(nuevoH);
+                personal.forEach(p => p.registroAsis = []);
+                await sync();
+                renderHistorial();
+            }
         };
 
         window.copiarPrimerHorario = () => {
@@ -461,7 +437,7 @@
             const btn = document.getElementById('confirmLogoutBtn');
             btn.innerHTML = '<span class="flex items-center justify-center"><svg class="animate-spin h-5 w-5 mr-2" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Saliendo...</span>';
             btn.disabled = true;
-            setTimeout(() => { window.location.href = 'index.html'; }, 800);
+            setTimeout(() => { window.location.reload(); }, 800);
         };
 
         window.onload = () => { 
@@ -479,6 +455,7 @@
         .sidebar-item.active { background: #1e293b; color: white; box-shadow: 0 10px 20px rgba(0,0,0,0.15); }
         .btn-grad { background: linear-gradient(135deg, #2563eb, #1d4ed8); transition: all 0.3s; }
         .btn-grad:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(37,99,235,0.4); }
+        input[type="time"]::-webkit-calendar-picker-indicator { opacity: 0.5; }
     </style>
 </head>
 <body class="flex h-screen overflow-hidden text-slate-800">
