@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Corp RRHH - Sistema de Asistencia</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        input[type="time"]::-webkit-calendar-picker-indicator { cursor: pointer; }
+    </style>
+</head>
+<body class="bg-[#F8FAFC]">
+    <div id="app"></div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
+        import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
+        import { getFirestore, doc, setDoc, collection, onSnapshot, addDoc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyB_BjOLNWYeja2LzEa-mHoXPz-o9yz4QNc",
+            authDomain: "sistem-a771f.firebaseapp.com",
+            projectId: "sistem-a771f",
+            storageBucket: "sistem-a771f.firebasestorage.app",
+            messagingSenderId: "50279337625",
+            appId: "1:50279337625:web:a8b43b64131e3fa1b5f208",
+            measurementId: "G-GDY01HHLYC"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const APP_ID = "sistem-a771f";
+
+        let state = {
+            user: null,
+            activeTab: 'Planilla Actual',
+            colaboradores: [],
+            asistencias: {},
+            selectedColab: null,
+            showAddModal: false,
+            editingColab: null,
+            authMode: 'login',
+            loading: true
+        };
+
+        const HORARIOS = {
+            PIURA: {
+                OPER: { entrada: '07:30', salida: '16:30', miercoles: '17:00', sabado: '12:30', almuerzo: 0.5 },
+                ADM: { entrada: '08:00', salida: '17:00', miercoles: '17:30', sabado: '13:00', almuerzo: 1.0 }
+            },
+            MOCHE: {
+                OPER: { entrada: '07:30', salida: '17:00', miercoles: '17:30', sabado: '12:30', almuerzo: 1.0 },
+                ADM: { entrada: '08:00', salida: '17:30', miercoles: '17:30', sabado: '13:30', almuerzo: 1.0 }
+            },
+            CAJAMARCA: {
+                OPER: { entrada: '07:30', salida: '17:00', miercoles: '17:30', sabado: '12:30', almuerzo: 1.0 },
+                ADM: { entrada: '08:00', salida: '17:30', miercoles: '17:30', sabado: '13:30', almuerzo: 1.0 }
+            }
+        };
+
+        const SEDES = ['PIURA', 'MOCHE', 'CAJAMARCA'];
+        const ESTADOS = ['ASISTIO', 'FALTA', 'PERMISO', 'DOM/FER', 'VACACIONES', 'DES. MEDICO'];
+        const APOYOS = ['NINGUNO', 'PIURA', 'MOCHE', 'CAJAMARCA', 'OTRO'];
+
+        function timeToMinutes(t) {
+            if (!t) return 0;
+            const [h, m] = t.split(':').map(Number);
+            return h * 60 + m;
+        }
+
+        function getTheoreticalHours(colab, day) {
+            const date = new Date(2026, 3, day);
+            const isSun = date.getDay() === 0;
+            const isSat = date.getDay() === 6;
+            const isWed = date.getDay() === 3;
+            if (isSun) return 0;
+            const config = HORARIOS[colab.sede]?.[colab.tipo] || HORARIOS.PIURA.OPER;
+            let targetExit = config.salida;
+            if (isWed) targetExit = config.miercoles;
+            if (isSat) targetExit = config.sabado;
+            const tIn = timeToMinutes(config.entrada);
+            const tOut = timeToMinutes(targetExit);
+            const lunch = isSat ? 0 : (config.almuerzo * 60);
+            return Math.max(0, (tOut - tIn - lunch) / 60);
+        }
+
+        function calculateHours(colab, day, entry, exit, status) {
+            const hTheory = getTheoreticalHours(colab, day);
+            
+            if (status === 'DOM/FER') {
+                const config = HORARIOS[colab.sede]?.[colab.tipo] || HORARIOS.PIURA.OPER;
+                const date = new Date(2026, 3, day);
+                const isSat = date.getDay() === 6;
+                const lunch = isSat ? 0 : (config.almuerzo * 60);
+                const worked = (timeToMinutes(exit) - timeToMinutes(entry) - lunch) / 60;
+                const horas = Math.max(0, worked);
+                return { horas: horas, e25: 0, e35: 0, e100: horas, deuda: 0 };
+            }
+
+            if (status === 'FALTA') {
+                return { horas: 0, e25: 0, e35: 0, e100: 0, deuda: hTheory };
+            }
+
+            if (status !== 'ASISTIO') {
+                return { horas: 0, e25: 0, e35: 0, e100: 0, deuda: 0 };
+            }
+
+            const config = HORARIOS[colab.sede]?.[colab.tipo] || HORARIOS.PIURA.OPER;
+            const date = new Date(2026, 3, day);
+            const isSat = date.getDay() === 6;
+            const isWed = date.getDay() === 3;
+            let targetExit = config.salida;
+            if (isWed) targetExit = config.miercoles;
+            if (isSat) targetExit = config.sabado;
+            
+            const tIn = timeToMinutes(config.entrada);
+            const tOut = timeToMinutes(targetExit);
+            const aIn = timeToMinutes(entry);
+            const aOut = timeToMinutes(exit);
+            const lunch = isSat ? 0 : (config.almuerzo * 60);
+            
+            const worked = aOut - aIn - lunch;
+            const target = tOut - tIn - lunch;
+            const diff = (worked - target) / 60;
+            
+            let e25 = 0, e35 = 0, deuda = 0;
+            if (diff > 0.01) {
+                e25 = Math.min(diff, 2);
+                e35 = Math.max(0, diff - 2);
+            } else if (diff < -0.01) {
+                deuda = Math.abs(diff);
+            }
+            return { horas: Math.max(0, worked / 60), e25, e35, e100: 0, deuda };
+        }
+
+        function getTotals(colabId) {
+            let e25 = 0, e35 = 0, e100 = 0, deuda = 0, diasLab = 0, domLab = 0, faltas = 0, permisos = 0, horasTotal = 0;
+            Object.keys(state.asistencias).forEach(k => { 
+                if (k.startsWith(colabId)) { 
+                    const a = state.asistencias[k]; 
+                    e25 += (a.e25 || 0); e35 += (a.e35 || 0); e100 += (a.e100 || 0); deuda += (a.deuda || 0); horasTotal += (a.horas || 0);
+                    // Corrección contador Días Lab: Se cuenta si Asistió o si fue Feriado pero trabajó.
+                    if (a.estado === 'ASISTIO' || (a.estado === 'DOM/FER' && (a.horas || 0) > 0)) {
+                        diasLab++;
+                    }
+                    if (a.estado === 'DOM/FER') domLab++;
+                    if (a.estado === 'FALTA') faltas++;
+                    if (a.estado === 'PERMISO') permisos++;
+                } 
+            });
+            return { e25, e35, e100, deuda, diasLab, domLab, faltas, permisos, horasTotal };
+        }
+
+        function render() {
+            const root = document.getElementById('app');
+            if (state.loading) {
+                root.innerHTML = `<div class="min-h-screen flex items-center justify-center bg-[#0f172a] text-white font-black text-xs uppercase tracking-widest animate-pulse">Cargando Sistema...</div>`;
+                return;
+            }
+            if (!state.user) renderAuth(root);
+            else renderApp(root);
+        }
+
+        function renderAuth(container) {
+            container.innerHTML = `
+                <div class="min-h-screen flex items-center justify-center p-4">
+                    <div class="bg-white rounded-[2.5rem] p-10 w-full max-w-md shadow-2xl">
+                        <div class="flex flex-col items-center mb-8 text-center">
+                            <div class="bg-indigo-600 p-4 rounded-2xl mb-4 text-white">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
+                            </div>
+                            <h1 class="text-2xl font-black text-slate-800 uppercase tracking-tight">Corp RRHH</h1>
+                        </div>
+                        <form id="authForm" class="space-y-4">
+                            <input type="email" id="email" placeholder="Correo" required class="w-full px-6 py-4 rounded-2xl bg-slate-50 border-none font-bold text-sm outline-none focus:ring-2 focus:ring-indigo-600 transition-all" />
+                            <input type="password" id="password" placeholder="Contraseña" required class="w-full px-6 py-4 rounded-2xl bg-slate-50 border-none font-bold text-sm outline-none focus:ring-2 focus:ring-indigo-600 transition-all" />
+                            <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black py-5 rounded-2xl shadow-xl transition-all uppercase text-[10px] tracking-widest">
+                                ${state.authMode === 'login' ? 'Entrar al Sistema' : 'Registrar Cuenta'}
+                            </button>
+                        </form>
+                        <div class="mt-6 text-center">
+                            <button onclick="toggleAuthMode()" class="text-[10px] font-black text-indigo-600 uppercase tracking-widest hover:underline">
+                                ${state.authMode === 'login' ? '¿No tienes cuenta? Regístrate' : '¿Ya tienes cuenta? Ingresa'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('authForm').onsubmit = handleAuth;
+        }
+
+        async function handleAuth(e) {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const pass = document.getElementById('password').value;
+            try {
+                if (state.authMode === 'login') await signInWithEmailAndPassword(auth, email, pass);
+                else await createUserWithEmailAndPassword(auth, email, pass);
+            } catch (err) { alert("Error: " + err.message); }
+        }
+
+        window.toggleAuthMode = () => { state.authMode = state.authMode === 'login' ? 'register' : 'login'; render(); };
+        window.handleLogout = () => signOut(auth);
+
+        function renderApp(container) {
+            container.innerHTML = `
+                <div class="min-h-screen flex">
+                    <aside class="w-72 bg-white border-r border-slate-100 flex flex-col shrink-0">
+                        <div class="p-8"><div class="flex items-center gap-3"><div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-black shadow-lg">C</div><span class="font-black text-slate-800 tracking-tighter uppercase text-xl">Corp RRHH</span></div></div>
+                        <nav class="flex-1 px-6 space-y-2">
+                            <button onclick="setTab('Planilla Actual')" class="w-full flex items-center gap-4 px-5 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all ${state.activeTab === 'Planilla Actual' ? 'bg-indigo-600 text-white shadow-xl' : 'text-slate-400 hover:bg-slate-50'}">Planilla Actual</button>
+                            <button onclick="setTab('Colaboradores')" class="w-full flex items-center gap-4 px-5 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all ${state.activeTab === 'Colaboradores' ? 'bg-indigo-600 text-white shadow-xl' : 'text-slate-400 hover:bg-slate-50'}">Colaboradores</button>
+                        </nav>
+                        <div class="p-6"><button onclick="handleLogout()" class="w-full flex items-center gap-4 px-5 py-4 rounded-2xl text-red-500 font-black uppercase text-[10px] tracking-widest hover:bg-red-50 transition-all">Salir</button></div>
+                    </aside>
+                    <main class="flex-1 overflow-y-auto">
+                        <header class="h-24 bg-white border-b border-slate-100 flex items-center justify-between px-10 sticky top-0 z-20">
+                            <h2 class="text-xl font-black text-slate-800 uppercase">${state.activeTab}</h2>
+                            <div class="flex gap-4">
+                                <button onclick="exportToExcel()" class="px-6 py-3 bg-emerald-600 text-white text-[10px] font-black rounded-xl shadow-lg uppercase tracking-widest">Descargar Excel</button>
+                                <button onclick="openColabModal()" class="px-6 py-3 bg-indigo-600 text-white text-[10px] font-black rounded-xl shadow-lg uppercase tracking-widest">+ Nuevo Personal</button>
+                            </div>
+                        </header>
+                        <div class="p-10">${state.activeTab === 'Planilla Actual' ? renderPlanilla() : renderColaboradores()}</div>
+                    </main>
+                </div>
+                ${state.showAddModal ? renderColabModal() : ''}
+                ${state.selectedColab ? renderAsistenciaModal() : ''}
+            `;
+            if (state.showAddModal) attachColabForm();
+        }
+
+        function renderPlanilla() {
+            return SEDES.map(sede => `
+                <div class="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden mb-10">
+                    <div class="bg-[#1a1c2c] px-8 py-5 text-white flex justify-between items-center">
+                        <h3 class="font-black text-xs uppercase tracking-widest">${sede}</h3>
+                    </div>
+                    <table class="w-full">
+                        <thead class="text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50">
+                            <tr><th class="px-8 py-4 text-left">Apellidos y Nombres</th><th class="px-4 py-4 text-center">DNI</th><th class="px-4 py-4 text-center">Deuda (H)</th><th class="px-8 py-4 text-right">Acción</th></tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-50">
+                            ${state.colaboradores.filter(c => c.sede === sede).map(c => {
+                                const totals = getTotals(c.id);
+                                return `<tr><td class="px-8 py-5 text-xs font-bold uppercase text-slate-700">${c.apePaterno} ${c.apeMaterno}, ${c.nombres}</td><td class="px-4 py-5 text-center font-bold text-slate-400">${c.dni}</td><td class="px-4 py-5 text-center font-black text-orange-600">${totals.deuda.toFixed(1)}h</td><td class="px-8 py-5 text-right"><button onclick="openAsistencia('${c.id}')" class="bg-indigo-600 text-white px-5 py-2 rounded-lg text-[9px] font-black uppercase shadow-md">Abrir Planilla</button></td></tr>`;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `).join('');
+        }
+
+        function renderColaboradores() {
+            return `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">${state.colaboradores.map(c => `<div class="bg-white p-6 rounded-[2rem] border border-slate-100 flex items-center justify-between group"><div class="flex items-center gap-4"><div class="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center font-black">${c.nombres[0]}</div><div><h4 class="font-black text-slate-800 text-xs uppercase">${c.apePaterno} ${c.nombres}</h4><p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${c.sede} | ${c.dni}</p></div></div><div class="flex gap-2"><button onclick="editColab('${c.id}')" class="p-2 hover:bg-slate-50 rounded-lg">Edit</button><button onclick="deleteColab('${c.id}')" class="p-2 hover:bg-red-50 text-red-500 rounded-lg">Del</button></div></div>`).join('')}</div>`;
+        }
+
+        function renderColabModal() {
+            const c = state.editingColab || { nombres: '', apePaterno: '', apeMaterno: '', dni: '', sede: 'PIURA', tipo: 'OPER' };
+            return `<div class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4"><div class="bg-white rounded-[2.5rem] w-full max-w-lg overflow-hidden shadow-2xl"><div class="p-8 border-b border-slate-50 flex justify-between items-center bg-slate-50/50"><h3 class="font-black text-slate-800 uppercase tracking-tight">${state.editingColab ? 'Editar Personal' : 'Nuevo Personal'}</h3><button onclick="closeColabModal()" class="text-slate-400">&times;</button></div><form id="colabForm" class="p-8 space-y-4"><div class="grid grid-cols-2 gap-4"><input id="cNombres" placeholder="NOMBRES" value="${c.nombres}" required class="px-4 py-3 bg-slate-50 rounded-xl text-[10px] font-bold uppercase outline-none" /><input id="cDni" placeholder="DNI" value="${c.dni}" required class="px-4 py-3 bg-slate-50 rounded-xl text-[10px] font-bold outline-none" /><input id="cApeP" placeholder="APE. PATERNO" value="${c.apePaterno}" required class="px-4 py-3 bg-slate-50 rounded-xl text-[10px] font-bold uppercase outline-none" /><input id="cApeM" placeholder="APE. MATERNO" value="${c.apeMaterno}" required class="px-4 py-3 bg-slate-50 rounded-xl text-[10px] font-bold uppercase outline-none" /></div><div class="grid grid-cols-2 gap-4"><select id="cSede" class="px-4 py-3 bg-slate-50 rounded-xl text-[10px] font-black uppercase outline-none">${SEDES.map(s => `<option ${c.sede === s ? 'selected' : ''} value="${s}">${s}</option>`).join('')}</select><select id="cTipo" class="px-4 py-3 bg-slate-50 rounded-xl text-[10px] font-black uppercase outline-none"><option ${c.tipo === 'OPER' ? 'selected' : ''} value="OPER">OPERARIO</option><option ${c.tipo === 'ADM' ? 'selected' : ''} value="ADM">ADMINISTRATIVO</option></select></div><button type="submit" class="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl uppercase text-[10px] tracking-widest shadow-xl">Guardar</button></form></div></div>`;
+        }
+
+        function renderAsistenciaModal() {
+            const colab = state.selectedColab;
+            const config = HORARIOS[colab.sede]?.[colab.tipo] || HORARIOS.PIURA.OPER;
+            return `<div class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"><div class="bg-white rounded-[2.5rem] w-full max-w-[95vw] h-[95vh] flex flex-col shadow-2xl overflow-hidden"><div class="p-6 bg-slate-50 border-b flex justify-between items-center"><div><h2 class="text-xl font-black text-slate-800 uppercase tracking-tight">${colab.apePaterno} ${colab.nombres}</h2><p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${colab.sede} | ${colab.tipo}</p></div><button onclick="closeAsistencia()" class="text-2xl font-black">&times;</button></div><div class="flex-1 overflow-auto p-6"><table class="w-full text-[9px] border-separate border-spacing-y-1"><thead class="sticky top-0 bg-white font-black text-slate-400 uppercase text-center"><tr><th class="p-2 text-left w-20">Día</th><th class="p-2 w-32">Estado</th><th class="p-2 w-32">Apoyo</th><th class="p-2">Entrada</th><th class="p-2">Salida</th><th class="p-2">25%</th><th class="p-2">35%</th><th class="p-2">100%</th><th class="p-2">Deuda</th></tr></thead><tbody>${Array.from({ length: 30 }).map((_, i) => { const day = i + 1; const key = `${colab.id}-${day}`; const date = new Date(2026, 3, day); const isSun = date.getDay() === 0; const isSat = date.getDay() === 6; const isWed = date.getDay() === 3; let defOut = config.salida; if (isWed) defOut = config.miercoles; if (isSat) defOut = config.sabado; const d = state.asistencias[key] || { estado: isSun ? 'DOM/FER' : 'ASISTIO', apoyo: 'NINGUNO', entrada: config.entrada, salida: defOut }; return `<tr class="${isSun ? 'bg-red-50/50' : 'bg-slate-50/40'} text-center rounded-lg"><td class="p-2 text-left font-black uppercase">${day} ${date.toLocaleDateString('es-ES', { weekday: 'short' })}</td><td class="p-1"><select onchange="updateAsist('${colab.id}', ${day}, 'estado', this.value)" class="w-full bg-white border rounded p-1 text-[8px] uppercase">${ESTADOS.map(st => `<option ${d.estado === st ? 'selected' : ''}>${st}</option>`).join('')}</select></td><td class="p-1"><select onchange="updateAsist('${colab.id}', ${day}, 'apoyo', this.value)" class="w-full bg-indigo-50 border rounded p-1 text-[8px] uppercase">${APOYOS.map(ap => `<option ${d.apoyo === ap ? 'selected' : ''}>${ap}</option>`).join('')}</select></td><td class="p-1"><input type="time" value="${d.entrada}" onchange="updateAsist('${colab.id}', ${day}, 'entrada', this.value)" class="w-full border rounded text-center p-1 font-bold outline-none"/></td><td class="p-1"><input type="time" value="${d.salida}" onchange="updateAsist('${colab.id}', ${day}, 'salida', this.value)" class="w-full border rounded text-center p-1 font-bold outline-none"/></td><td class="p-2 font-black text-indigo-600">${(d.e25 || 0).toFixed(1)}</td><td class="p-2 font-black text-indigo-800">${(d.e35 || 0).toFixed(1)}</td><td class="p-2 font-black text-red-600">${(d.e100 || 0).toFixed(1)}</td><td class="p-2 font-black text-orange-600">${(d.deuda || 0).toFixed(1)}</td></tr>`; }).join('')}</tbody></table></div></div></div>`;
+        }
+
+        window.setTab = (t) => { state.activeTab = t; render(); };
+        window.openColabModal = () => { state.showAddModal = true; render(); };
+        window.closeColabModal = () => { state.showAddModal = false; state.editingColab = null; render(); };
+        window.openAsistencia = (id) => { state.selectedColab = state.colaboradores.find(c => c.id === id); render(); };
+        window.closeAsistencia = () => { state.selectedColab = null; render(); };
+        window.editColab = (id) => { state.editingColab = state.colaboradores.find(c => c.id === id); state.showAddModal = true; render(); };
+
+        function attachColabForm() {
+            const form = document.getElementById('colabForm');
+            if (!form) return;
+            form.onsubmit = async (e) => {
+                e.preventDefault();
+                const data = { nombres: document.getElementById('cNombres').value.toUpperCase(), dni: document.getElementById('cDni').value, apePaterno: document.getElementById('cApeP').value.toUpperCase(), apeMaterno: document.getElementById('cApeM').value.toUpperCase(), sede: document.getElementById('cSede').value, tipo: document.getElementById('cTipo').value };
+                try {
+                    if (state.editingColab) await updateDoc(doc(db, 'artifacts', APP_ID, 'users', state.user.uid, 'colaboradores', state.editingColab.id), data);
+                    else await addDoc(collection(db, 'artifacts', APP_ID, 'users', state.user.uid, 'colaboradores'), data);
+                    closeColabModal();
+                } catch (err) { alert(err.message); }
+            };
+        }
+
+        window.deleteColab = async (id) => {
+            if (!confirm("¿Eliminar?")) return;
+            try { await deleteDoc(doc(db, 'artifacts', APP_ID, 'users', state.user.uid, 'colaboradores', id)); } catch (err) { alert(err.message); }
+        };
+
+        window.updateAsist = async (colabId, day, field, val) => {
+            const key = `${colabId}-${day}`;
+            const colab = state.colaboradores.find(c => c.id === colabId);
+            const current = state.asistencias[key] || { estado: 'ASISTIO', apoyo: 'NINGUNO', entrada: HORARIOS[colab.sede][colab.tipo].entrada, salida: HORARIOS[colab.sede][colab.tipo].salida };
+            const merged = { ...current, [field]: val };
+            const calc = calculateHours(colab, day, merged.entrada, merged.salida, merged.estado);
+            await setDoc(doc(db, 'artifacts', APP_ID, 'users', state.user.uid, 'asistencias', key), { ...merged, ...calc });
+        };
+
+        window.exportToExcel = () => {
+            const wb = XLSX.utils.book_new();
+            const year = 2026, month = 3;
+            const daysInMonth = Array.from({ length: 31 }, (_, i) => i + 1).filter(d => new Date(year, month, d).getMonth() === month);
+
+            // RESUMEN GENERAL
+            const resHeaders = [['RESUMEN DE ASISTENCIA - ABRIL 2026'], ['SEDE', 'APE. PATERNO', 'APE. MATERNO', 'NOMBRES', 'DNI', 'D. LAB', 'D. FER', 'FALTA', 'PERM', 'TOTAL H', 'DEUDA', '25%', '35%', '100%']];
+            const resData = state.colaboradores.map(c => {
+                const t = getTotals(c.id);
+                return [c.sede, c.apePaterno, c.apeMaterno, c.nombres, c.dni, t.diasLab, t.domLab, t.faltas, t.permisos, t.horasTotal.toFixed(1), t.deuda.toFixed(1), t.e25.toFixed(1), t.e35.toFixed(1), t.e100.toFixed(1)];
+            });
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([...resHeaders, ...resData]), "Resumen");
+
+            // HOJAS POR SEDE
+            SEDES.forEach(sede => {
+                const colabs = state.colaboradores.filter(c => c.sede === sede);
+                if (!colabs.length) return;
+                const rows = [[`SEDE: ${sede}`], ['APELLIDOS Y NOMBRES', 'DNI', ...daysInMonth, 'T. DEUDA', 'T. EXTRA']];
+                colabs.forEach(c => {
+                    const row = [`${c.apePaterno} ${c.nombres}`, c.dni];
+                    let tDeuda = 0, tExtra = 0;
+                    daysInMonth.forEach(day => {
+                        let d = state.asistencias[`${c.id}-${day}`];
+                        const date = new Date(year, month, day);
+                        const isSun = date.getDay() === 0;
+                        const suffix = (d && d.apoyo && d.apoyo !== 'NINGUNO') ? ` (${d.apoyo})` : '';
+
+                        if (!d) {
+                            if (isSun) row.push('D');
+                            else row.push(getTheoreticalHours(c, day).toFixed(1));
+                        } else {
+                            if (d.estado === 'DOM/FER') {
+                                let hVal = (d.horas || 0);
+                                if (hVal > 0) row.push(`FD(${hVal.toFixed(1)})${suffix}`);
+                                else row.push(`D${suffix}`);
+                                tExtra += (d.e100 || 0);
+                            } else if (d.estado === 'ASISTIO') {
+                                let hVal = (d.horas || 0).toFixed(1);
+                                let modStr = d.e25 + d.e35 > 0 ? ` (+${(d.e25+d.e35).toFixed(1)})` : (d.deuda > 0.01 ? ` (-${d.deuda.toFixed(1)})` : "");
+                                row.push(`${hVal}${modStr}${suffix}`);
+                                tExtra += (d.e25 + d.e35);
+                                tDeuda += (d.deuda || 0);
+                            } else if (d.estado === 'FALTA') {
+                                row.push(`F${suffix}`);
+                                tDeuda += (d.deuda || 0);
+                            } else if (d.estado === 'PERMISO') {
+                                row.push(`P${suffix}`);
+                            } else if (d.estado === 'VACACIONES') {
+                                row.push(`VC${suffix}`);
+                            } else if (d.estado === 'DES. MEDICO') {
+                                row.push(`DM${suffix}`);
+                            } else {
+                                row.push(`-${suffix}`);
+                            }
+                        }
+                    });
+                    row.push(tDeuda.toFixed(1), tExtra.toFixed(1));
+                    rows.push(row);
+                });
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), sede);
+            });
+            XLSX.writeFile(wb, `Planilla_Corp_RRHH_Abril_2026.xlsx`);
+        };
+
+        onAuthStateChanged(auth, (user) => {
+            state.user = user;
+            state.loading = false;
+            if (user) {
+                onSnapshot(collection(db, 'artifacts', APP_ID, 'users', user.uid, 'colaboradores'), (snap) => { 
+                    state.colaboradores = snap.docs.map(d => ({ id: d.id, ...d.data() })); 
+                    render(); 
+                });
+                onSnapshot(collection(db, 'artifacts', APP_ID, 'users', user.uid, 'asistencias'), (snap) => { 
+                    snap.docs.forEach(d => { state.asistencias[d.id] = d.data(); }); 
+                    render(); 
+                });
+            } else render();
+        });
+    </script>
+</body>
+</html>
