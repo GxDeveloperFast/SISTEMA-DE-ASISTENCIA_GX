@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Corp RRHH - Sistema de Asistencia</title>
+    <title>RRHH - Sistema de Asistencia</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
@@ -34,6 +34,12 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
         const APP_ID = "sistem-a771f";
+
+        // Obtener fecha actual para automatizar mes y año
+        const now = new Date();
+        const currentMonth = now.getMonth(); // 0-11
+        const currentYear = now.getFullYear();
+        const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
         let state = {
             user: null,
@@ -73,7 +79,7 @@
         }
 
         function getTheoreticalHours(colab, day) {
-            const date = new Date(2026, 3, day);
+            const date = new Date(currentYear, currentMonth, day);
             const isSun = date.getDay() === 0;
             const isSat = date.getDay() === 6;
             const isWed = date.getDay() === 3;
@@ -93,7 +99,7 @@
             
             if (status === 'DOM/FER') {
                 const config = HORARIOS[colab.sede]?.[colab.tipo] || HORARIOS.PIURA.OPER;
-                const date = new Date(2026, 3, day);
+                const date = new Date(currentYear, currentMonth, day);
                 const isSat = date.getDay() === 6;
                 const lunch = isSat ? 0 : (config.almuerzo * 60);
                 const worked = (timeToMinutes(exit) - timeToMinutes(entry) - lunch) / 60;
@@ -110,7 +116,7 @@
             }
 
             const config = HORARIOS[colab.sede]?.[colab.tipo] || HORARIOS.PIURA.OPER;
-            const date = new Date(2026, 3, day);
+            const date = new Date(currentYear, currentMonth, day);
             const isSat = date.getDay() === 6;
             const isWed = date.getDay() === 3;
             let targetExit = config.salida;
@@ -143,7 +149,6 @@
                 if (k.startsWith(colabId)) { 
                     const a = state.asistencias[k]; 
                     e25 += (a.e25 || 0); e35 += (a.e35 || 0); e100 += (a.e100 || 0); deuda += (a.deuda || 0); horasTotal += (a.horas || 0);
-                    // Corrección contador Días Lab: Se cuenta si Asistió o si fue Feriado pero trabajó.
                     if (a.estado === 'ASISTIO' || (a.estado === 'DOM/FER' && (a.horas || 0) > 0)) {
                         diasLab++;
                     }
@@ -173,7 +178,7 @@
                             <div class="bg-indigo-600 p-4 rounded-2xl mb-4 text-white">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
                             </div>
-                            <h1 class="text-2xl font-black text-slate-800 uppercase tracking-tight">Corp RRHH</h1>
+                            <h1 class="text-2xl font-black text-slate-800 uppercase tracking-tight">SISTEMA ASISTENCIA RRHH</h1>
                         </div>
                         <form id="authForm" class="space-y-4">
                             <input type="email" id="email" placeholder="Correo" required class="w-full px-6 py-4 rounded-2xl bg-slate-50 border-none font-bold text-sm outline-none focus:ring-2 focus:ring-indigo-600 transition-all" />
@@ -200,7 +205,7 @@
             try {
                 if (state.authMode === 'login') await signInWithEmailAndPassword(auth, email, pass);
                 else await createUserWithEmailAndPassword(auth, email, pass);
-            } catch (err) { alert("Error: " + err.message); }
+            } catch (err) { alert("Error: DATOS MAL INGRESADOS, INTENTALO DE NUEVO" ); }
         }
 
         window.toggleAuthMode = () => { state.authMode = state.authMode === 'login' ? 'register' : 'login'; render(); };
@@ -210,16 +215,16 @@
             container.innerHTML = `
                 <div class="min-h-screen flex">
                     <aside class="w-72 bg-white border-r border-slate-100 flex flex-col shrink-0">
-                        <div class="p-8"><div class="flex items-center gap-3"><div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-black shadow-lg">C</div><span class="font-black text-slate-800 tracking-tighter uppercase text-xl">Corp RRHH</span></div></div>
+                        <div class="p-8"><div class="flex items-center gap-3"><div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-black shadow-lg">GX</div><span class="font-black text-slate-800 tracking-tighter uppercase text-xl">SISTEMA ASISTENCIA RRHH</span></div></div>
                         <nav class="flex-1 px-6 space-y-2">
                             <button onclick="setTab('Planilla Actual')" class="w-full flex items-center gap-4 px-5 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all ${state.activeTab === 'Planilla Actual' ? 'bg-indigo-600 text-white shadow-xl' : 'text-slate-400 hover:bg-slate-50'}">Planilla Actual</button>
                             <button onclick="setTab('Colaboradores')" class="w-full flex items-center gap-4 px-5 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all ${state.activeTab === 'Colaboradores' ? 'bg-indigo-600 text-white shadow-xl' : 'text-slate-400 hover:bg-slate-50'}">Colaboradores</button>
                         </nav>
-                        <div class="p-6"><button onclick="handleLogout()" class="w-full flex items-center gap-4 px-5 py-4 rounded-2xl text-red-500 font-black uppercase text-[10px] tracking-widest hover:bg-red-50 transition-all">Salir</button></div>
+                        <div class="p-6"><button onclick="handleLogout()" class="w-full flex items-center gap-4 px-5 py-4 rounded-2xl text-red-500 font-black uppercase text-[10px] tracking-widest hover:bg-red-50 transition-all">Salir del Sistema</button></div>
                     </aside>
                     <main class="flex-1 overflow-y-auto">
                         <header class="h-24 bg-white border-b border-slate-100 flex items-center justify-between px-10 sticky top-0 z-20">
-                            <h2 class="text-xl font-black text-slate-800 uppercase">${state.activeTab}</h2>
+                            <h2 class="text-xl font-black text-slate-800 uppercase">${state.activeTab} - ${monthNames[currentMonth]} ${currentYear}</h2>
                             <div class="flex gap-4">
                                 <button onclick="exportToExcel()" class="px-6 py-3 bg-emerald-600 text-white text-[10px] font-black rounded-xl shadow-lg uppercase tracking-widest">Descargar Excel</button>
                                 <button onclick="openColabModal()" class="px-6 py-3 bg-indigo-600 text-white text-[10px] font-black rounded-xl shadow-lg uppercase tracking-widest">+ Nuevo Personal</button>
@@ -267,7 +272,9 @@
         function renderAsistenciaModal() {
             const colab = state.selectedColab;
             const config = HORARIOS[colab.sede]?.[colab.tipo] || HORARIOS.PIURA.OPER;
-            return `<div class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"><div class="bg-white rounded-[2.5rem] w-full max-w-[95vw] h-[95vh] flex flex-col shadow-2xl overflow-hidden"><div class="p-6 bg-slate-50 border-b flex justify-between items-center"><div><h2 class="text-xl font-black text-slate-800 uppercase tracking-tight">${colab.apePaterno} ${colab.nombres}</h2><p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${colab.sede} | ${colab.tipo}</p></div><button onclick="closeAsistencia()" class="text-2xl font-black">&times;</button></div><div class="flex-1 overflow-auto p-6"><table class="w-full text-[9px] border-separate border-spacing-y-1"><thead class="sticky top-0 bg-white font-black text-slate-400 uppercase text-center"><tr><th class="p-2 text-left w-20">Día</th><th class="p-2 w-32">Estado</th><th class="p-2 w-32">Apoyo</th><th class="p-2">Entrada</th><th class="p-2">Salida</th><th class="p-2">25%</th><th class="p-2">35%</th><th class="p-2">100%</th><th class="p-2">Deuda</th></tr></thead><tbody>${Array.from({ length: 30 }).map((_, i) => { const day = i + 1; const key = `${colab.id}-${day}`; const date = new Date(2026, 3, day); const isSun = date.getDay() === 0; const isSat = date.getDay() === 6; const isWed = date.getDay() === 3; let defOut = config.salida; if (isWed) defOut = config.miercoles; if (isSat) defOut = config.sabado; const d = state.asistencias[key] || { estado: isSun ? 'DOM/FER' : 'ASISTIO', apoyo: 'NINGUNO', entrada: config.entrada, salida: defOut }; return `<tr class="${isSun ? 'bg-red-50/50' : 'bg-slate-50/40'} text-center rounded-lg"><td class="p-2 text-left font-black uppercase">${day} ${date.toLocaleDateString('es-ES', { weekday: 'short' })}</td><td class="p-1"><select onchange="updateAsist('${colab.id}', ${day}, 'estado', this.value)" class="w-full bg-white border rounded p-1 text-[8px] uppercase">${ESTADOS.map(st => `<option ${d.estado === st ? 'selected' : ''}>${st}</option>`).join('')}</select></td><td class="p-1"><select onchange="updateAsist('${colab.id}', ${day}, 'apoyo', this.value)" class="w-full bg-indigo-50 border rounded p-1 text-[8px] uppercase">${APOYOS.map(ap => `<option ${d.apoyo === ap ? 'selected' : ''}>${ap}</option>`).join('')}</select></td><td class="p-1"><input type="time" value="${d.entrada}" onchange="updateAsist('${colab.id}', ${day}, 'entrada', this.value)" class="w-full border rounded text-center p-1 font-bold outline-none"/></td><td class="p-1"><input type="time" value="${d.salida}" onchange="updateAsist('${colab.id}', ${day}, 'salida', this.value)" class="w-full border rounded text-center p-1 font-bold outline-none"/></td><td class="p-2 font-black text-indigo-600">${(d.e25 || 0).toFixed(1)}</td><td class="p-2 font-black text-indigo-800">${(d.e35 || 0).toFixed(1)}</td><td class="p-2 font-black text-red-600">${(d.e100 || 0).toFixed(1)}</td><td class="p-2 font-black text-orange-600">${(d.deuda || 0).toFixed(1)}</td></tr>`; }).join('')}</tbody></table></div></div></div>`;
+            const daysInMonthCount = new Date(currentYear, currentMonth + 1, 0).getDate();
+
+            return `<div class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"><div class="bg-white rounded-[2.5rem] w-full max-w-[95vw] h-[95vh] flex flex-col shadow-2xl overflow-hidden"><div class="p-6 bg-slate-50 border-b flex justify-between items-center"><div><h2 class="text-xl font-black text-slate-800 uppercase tracking-tight">${colab.apePaterno} ${colab.nombres}</h2><p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${colab.sede} | ${colab.tipo} | ${monthNames[currentMonth]} ${currentYear}</p></div><button onclick="closeAsistencia()" class="text-2xl font-black">&times;</button></div><div class="flex-1 overflow-auto p-6"><table class="w-full text-[9px] border-separate border-spacing-y-1"><thead class="sticky top-0 bg-white font-black text-slate-400 uppercase text-center"><tr><th class="p-2 text-left w-20">Día</th><th class="p-2 w-32">Estado</th><th class="p-2 w-32">Apoyo</th><th class="p-2">Entrada</th><th class="p-2">Salida</th><th class="p-2">25%</th><th class="p-2">35%</th><th class="p-2">100%</th><th class="p-2">Deuda</th></tr></thead><tbody>${Array.from({ length: daysInMonthCount }).map((_, i) => { const day = i + 1; const key = `${colab.id}-${day}`; const date = new Date(currentYear, currentMonth, day); const isSun = date.getDay() === 0; const isSat = date.getDay() === 6; const isWed = date.getDay() === 3; let defOut = config.salida; if (isWed) defOut = config.miercoles; if (isSat) defOut = config.sabado; const d = state.asistencias[key] || { estado: isSun ? 'DOM/FER' : 'ASISTIO', apoyo: 'NINGUNO', entrada: config.entrada, salida: defOut }; return `<tr class="${isSun ? 'bg-red-50/50' : 'bg-slate-50/40'} text-center rounded-lg"><td class="p-2 text-left font-black uppercase">${day} ${date.toLocaleDateString('es-ES', { weekday: 'short' })}</td><td class="p-1"><select onchange="updateAsist('${colab.id}', ${day}, 'estado', this.value)" class="w-full bg-white border rounded p-1 text-[8px] uppercase">${ESTADOS.map(st => `<option ${d.estado === st ? 'selected' : ''}>${st}</option>`).join('')}</select></td><td class="p-1"><select onchange="updateAsist('${colab.id}', ${day}, 'apoyo', this.value)" class="w-full bg-indigo-50 border rounded p-1 text-[8px] uppercase">${APOYOS.map(ap => `<option ${d.apoyo === ap ? 'selected' : ''}>${ap}</option>`).join('')}</select></td><td class="p-1"><input type="time" value="${d.entrada}" onchange="updateAsist('${colab.id}', ${day}, 'entrada', this.value)" class="w-full border rounded text-center p-1 font-bold outline-none"/></td><td class="p-1"><input type="time" value="${d.salida}" onchange="updateAsist('${colab.id}', ${day}, 'salida', this.value)" class="w-full border rounded text-center p-1 font-bold outline-none"/></td><td class="p-2 font-black text-indigo-600">${(d.e25 || 0).toFixed(1)}</td><td class="p-2 font-black text-indigo-800">${(d.e35 || 0).toFixed(1)}</td><td class="p-2 font-black text-red-600">${(d.e100 || 0).toFixed(1)}</td><td class="p-2 font-black text-orange-600">${(d.deuda || 0).toFixed(1)}</td></tr>`; }).join('')}</tbody></table></div></div></div>`;
         }
 
         window.setTab = (t) => { state.activeTab = t; render(); };
@@ -292,7 +299,7 @@
         }
 
         window.deleteColab = async (id) => {
-            if (!confirm("¿Eliminar?")) return;
+            if (!confirm("¿Seguro que deseas eliminar este Personal?")) return;
             try { await deleteDoc(doc(db, 'artifacts', APP_ID, 'users', state.user.uid, 'colaboradores', id)); } catch (err) { alert(err.message); }
         };
 
@@ -307,33 +314,33 @@
 
         window.exportToExcel = () => {
             const wb = XLSX.utils.book_new();
-            const year = 2026, month = 3;
-            const daysInMonth = Array.from({ length: 31 }, (_, i) => i + 1).filter(d => new Date(year, month, d).getMonth() === month);
+            const daysInMonthCount = new Date(currentYear, currentMonth + 1, 0).getDate();
+            const daysInMonth = Array.from({ length: daysInMonthCount }, (_, i) => i + 1);
 
-            // RESUMEN GENERAL
-            const resHeaders = [['RESUMEN DE ASISTENCIA - ABRIL 2026'], ['SEDE', 'APE. PATERNO', 'APE. MATERNO', 'NOMBRES', 'DNI', 'D. LAB', 'D. FER', 'FALTA', 'PERM', 'TOTAL H', 'DEUDA', '25%', '35%', '100%']];
+            // RESUMEN GENERAL DINÁMICO
+            const resHeaders = [[`RESUMEN DE ASISTENCIA - ${monthNames[currentMonth].toUpperCase()} ${currentYear}`], ['SEDE', 'APE. PATERNO', 'APE. MATERNO', 'NOMBRES', 'DNI', 'D. LAB', 'D. FER', 'FALTA', 'PERM', 'TOTAL H', 'DEUDA', '25%', '35%', '100%']];
             const resData = state.colaboradores.map(c => {
                 const t = getTotals(c.id);
                 return [c.sede, c.apePaterno, c.apeMaterno, c.nombres, c.dni, t.diasLab, t.domLab, t.faltas, t.permisos, t.horasTotal.toFixed(1), t.deuda.toFixed(1), t.e25.toFixed(1), t.e35.toFixed(1), t.e100.toFixed(1)];
             });
             XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([...resHeaders, ...resData]), "Resumen");
 
-            // HOJAS POR SEDE
+            // HOJAS POR SEDE DINÁMICAS
             SEDES.forEach(sede => {
                 const colabs = state.colaboradores.filter(c => c.sede === sede);
                 if (!colabs.length) return;
-                const rows = [[`SEDE: ${sede}`], ['APELLIDOS Y NOMBRES', 'DNI', ...daysInMonth, 'T. DEUDA', 'T. EXTRA']];
+                const rows = [[`SEDE: ${sede} - PERIODO: ${monthNames[currentMonth]} ${currentYear}`], ['APELLIDOS Y NOMBRES', 'DNI', ...daysInMonth, 'T. DEUDA', 'T. EXTRA']];
                 colabs.forEach(c => {
                     const row = [`${c.apePaterno} ${c.nombres}`, c.dni];
                     let tDeuda = 0, tExtra = 0;
                     daysInMonth.forEach(day => {
                         let d = state.asistencias[`${c.id}-${day}`];
-                        const date = new Date(year, month, day);
+                        const date = new Date(currentYear, currentMonth, day);
                         const isSun = date.getDay() === 0;
                         const suffix = (d && d.apoyo && d.apoyo !== 'NINGUNO') ? ` (${d.apoyo})` : '';
 
                         if (!d) {
-                            if (isSun) row.push('D');
+                            if (isSun) row.push(`D${suffix}`);
                             else row.push(getTheoreticalHours(c, day).toFixed(1));
                         } else {
                             if (d.estado === 'DOM/FER') {
@@ -366,7 +373,10 @@
                 });
                 XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), sede);
             });
-            XLSX.writeFile(wb, `Planilla_Corp_RRHH_Abril_2026.xlsx`);
+            
+            // NOMBRE DE ARCHIVO DINÁMICO
+            const fileName = `Planilla_Corp_RRHH_${monthNames[currentMonth]}_${currentYear}.xlsx`;
+            XLSX.writeFile(wb, fileName);
         };
 
         onAuthStateChanged(auth, (user) => {
