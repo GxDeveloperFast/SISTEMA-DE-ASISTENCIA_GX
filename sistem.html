@@ -4,650 +4,200 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SISTEMA GX - Gestión de Asistencia</title>
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Font Awesome -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- SheetJS para Excel -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f1f5f9; }
+        .sidebar-item-active { background-color: #1e293b; color: white; border-radius: 12px; }
+        .loading-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+    </style>
+</head>
+<body class="flex h-screen overflow-hidden">
 
-        // Configuración Global
-        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+    <!-- Sidebar -->
+    <aside class="w-72 bg-white border-r border-slate-200 flex flex-col p-6">
+        <div class="flex items-center gap-3 mb-10 px-2">
+            <div class="bg-indigo-600 text-white p-2 rounded-lg">
+                <i class="fas fa-th-large"></i>
+            </div>
+            <div>
+                <h1 class="font-black text-slate-800 leading-none text-lg">SISTEMA GX</h1>
+                <span class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Admin Panel</span>
+            </div>
+        </div>
+
+        <nav class="space-y-1 flex-1">
+            <a href="#" class="sidebar-item-active flex items-center gap-3 px-4 py-3 text-sm font-bold transition-all">
+                <i class="fas fa-calendar-check w-5 text-center"></i> ASISTENCIA
+            </a>
+            <a href="#" class="flex items-center gap-3 px-4 py-3 text-sm font-bold text-slate-400 hover:text-slate-600 transition-all">
+                <i class="fas fa-users w-5 text-center"></i> PERSONAL
+            </a>
+            <a href="#" class="flex items-center gap-3 px-4 py-3 text-sm font-bold text-slate-400 hover:text-slate-600 transition-all">
+                <i class="fas fa-archive w-5 text-center"></i> ARCHIVO
+            </a>
+        </nav>
+
+        <div class="pt-6 border-t border-slate-100">
+            <button onclick="window.location.href='index.html'" class="w-full flex items-center justify-center gap-2 py-3 text-xs font-black text-rose-500 hover:bg-rose-50 rounded-xl transition-all">
+                SALIR DEL SISTEMA <i class="fas fa-sign-out-alt"></i>
+            </button>
+        </div>
+    </aside>
+
+    <!-- Contenido Principal -->
+    <main class="flex-1 flex flex-col min-w-0">
+        <!-- Header -->
+        <header class="h-20 bg-white border-b border-slate-200 flex items-center justify-between px-8">
+            <div id="connection-status" class="flex items-center gap-2">
+                <div class="w-2 h-2 bg-amber-500 rounded-full loading-pulse"></div>
+                <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sincronizando con Cloud Firestore...</span>
+            </div>
+            
+            <div class="flex items-center gap-4">
+                <button class="bg-emerald-500 hover:bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold text-xs flex items-center gap-2 transition-all shadow-lg shadow-emerald-100">
+                    <i class="fas fa-file-excel"></i> DESCARGAR EXCEL
+                </button>
+                <div class="h-10 w-10 bg-slate-800 text-white rounded-lg flex items-center justify-center">
+                    <i class="fas fa-user-shield text-sm"></i>
+                </div>
+            </div>
+        </header>
+
+        <!-- Tabla -->
+        <div class="p-8 overflow-y-auto">
+            <div class="mb-6 flex justify-between items-end">
+                <div>
+                    <h2 class="text-[10px] font-black text-indigo-500 uppercase tracking-[0.2em] mb-1">Registro Mensual</h2>
+                    <h3 class="text-2xl font-black text-slate-800">Control de Entradas</h3>
+                </div>
+                <div class="text-right">
+                    <span id="current-date" class="text-xs font-bold text-slate-400 bg-slate-100 px-3 py-1 rounded-full">--/--/----</span>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-50/50 border-b border-slate-200">
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase">Usuario</th>
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase text-center">ID / DNI</th>
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase text-center">Hora</th>
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase text-center">Fecha</th>
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase text-center">Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-content">
+                        <!-- Estado inicial de carga -->
+                        <tr>
+                            <td colspan="5" class="px-6 py-20 text-center">
+                                <div class="flex flex-col items-center gap-4">
+                                    <div class="flex gap-1">
+                                        <div class="w-2 h-2 bg-indigo-500 rounded-full animate-bounce"></div>
+                                        <div class="w-2 h-2 bg-indigo-500 rounded-full animate-bounce [animation-delay:0.2s]"></div>
+                                        <div class="w-2 h-2 bg-indigo-500 rounded-full animate-bounce [animation-delay:0.4s]"></div>
+                                    </div>
+                                    <p class="text-xs font-bold text-slate-400 uppercase tracking-widest">Buscando registros...</p>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- FIREBASE SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+        import { getFirestore, collection, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+
+        // Configuración oficial de tu proyecto
+        const firebaseConfig = {
+            apiKey: "AIzaSyDx6ujtmDoNZ3fus4dYnNDoxjz-1KQYDXA",
+            authDomain: "sistema-gx.firebaseapp.com",
+            projectId: "sistema-gx",
+            storageBucket: "sistema-gx.firebasestorage.app",
+            messagingSenderId: "216811985666",
+            appId: "1:216811985666:web:089da99f3aac9350c3401b",
+            measurementId: "G-83SGCF1GFX"
+        };
+
+        // Inicialización
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
 
-        // Variables de Estado
-        let personal = [];
-        let historial = [];
-        let user = null;
-        let currentIdx = -1;
-        const MESES = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"];
-        const d = new Date();
-        let mAct = d.getMonth();
-        let aAct = d.getFullYear();
-        const FERIADOS = ["1-0", "28-6", "29-6", "30-7", "25-11"]; // Ejemplo: 1 de Enero, etc.
+        const tableContent = document.getElementById('table-content');
+        const connectionStatus = document.getElementById('connection-status');
+        const dateDisplay = document.getElementById('current-date');
 
-        // --- LÓGICA DE FIREBASE ---
-        async function initAuth() {
-            try {
-                await signInAnonymously(auth);
-            } catch (err) {
-                console.error("Auth error:", err);
-            }
-        }
+        // Mostrar fecha actual
+        const now = new Date();
+        dateDisplay.innerText = now.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
-        onAuthStateChanged(auth, (u) => {
-            if (u) {
-                user = u;
-                listenData();
+        // Autenticación anónima para cumplir con las reglas de seguridad
+        signInAnonymously(auth).catch(err => console.error("Error Auth:", err));
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                // Ruta: artifacts -> sistema-gx -> public -> data -> users
+                // Nota: Ajustamos la ruta según las nuevas reglas de seguridad globales
+                const usersCollection = collection(db, "artifacts", "sistema-gx", "public", "data", "users");
+
+                onSnapshot(usersCollection, (snapshot) => {
+                    connectionStatus.innerHTML = `
+                        <div class="w-2 h-2 bg-emerald-500 rounded-full"></div>
+                        <span class="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Sistema en Línea</span>
+                    `;
+
+                    if (snapshot.empty) {
+                        tableContent.innerHTML = `
+                            <tr>
+                                <td colspan="5" class="px-6 py-20 text-center text-slate-400">
+                                    <i class="fas fa-folder-open text-4xl mb-3 opacity-20"></i>
+                                    <p class="font-bold text-xs uppercase tracking-widest">Sin registros en la base de datos pública</p>
+                                </td>
+                            </tr>
+                        `;
+                        return;
+                    }
+
+                    let html = "";
+                    snapshot.forEach((doc) => {
+                        const data = doc.data();
+                        html += `
+                            <tr class="border-b border-slate-100 hover:bg-slate-50/80 transition-colors">
+                                <td class="px-6 py-4">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-9 h-9 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center text-xs font-black border border-indigo-100">
+                                            ${(data.nombre || 'U').charAt(0).toUpperCase()}
+                                        </div>
+                                        <span class="text-sm font-bold text-slate-700">${data.nombre || 'Desconocido'}</span>
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4 text-sm text-slate-500 font-medium text-center">${data.id || data.dni || '---'}</td>
+                                <td class="px-6 py-4 text-sm font-black text-slate-800 text-center">${data.hora || data.entrada || '--:--'}</td>
+                                <td class="px-6 py-4 text-sm text-slate-400 text-center font-medium">${data.fecha || '--/--/--'}</td>
+                                <td class="px-6 py-4 text-center">
+                                    <span class="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-[9px] font-black uppercase tracking-tighter">Registrado</span>
+                                </td>
+                            </tr>
+                        `;
+                    });
+                    tableContent.innerHTML = html;
+                }, (error) => {
+                    console.error("Firestore Error:", error);
+                    connectionStatus.innerHTML = `
+                        <div class="w-2 h-2 bg-rose-500 rounded-full"></div>
+                        <span class="text-[10px] font-black text-rose-600 uppercase tracking-widest">Error de Acceso</span>
+                    `;
+                });
             }
         });
-
-        function listenData() {
-            if (!user) return;
-            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'config');
-            onSnapshot(docRef, (snap) => {
-                if (snap.exists()) {
-                    const data = snap.data();
-                    personal = data.personal || [];
-                    historial = data.historial || [];
-                    renderPersonal();
-                    renderHistorial();
-                    updateUI();
-                }
-            }, (error) => console.error("Error en snapshot:", error));
-        }
-
-        async function sync() {
-            if (!user) return;
-            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'config');
-            await setDoc(docRef, { personal, historial }, { merge: true });
-        }
-
-        // --- FUNCIONES AUXILIARES ---
-        function dMins(inTime, outTime) {
-            if (!inTime || !outTime || inTime === "00:00") return 0;
-            const [h1, m1] = inTime.split(':').map(Number);
-            const [h2, m2] = outTime.split(':').map(Number);
-            let diff = (h2 * 60 + m2) - (h1 * 60 + m1);
-            return diff < 0 ? diff + 1440 : diff;
-        }
-
-        function getHorarioTeorico(sede, tipo, diaSem) {
-            if (diaSem === 0) return { in: "00:00", out: "00:00", refri: 0 };
-            if (tipo === "ADMINISTRATIVO") return { in: "08:00", out: "18:00", refri: 1 };
-            // Operarios por defecto
-            return { in: "07:30", out: "17:00", refri: 0.5 };
-        }
-
-        // --- RENDERIZADO Y UI ---
-        function updateUI() {
-            document.getElementById('mes-actual-label').innerText = `${MESES[mAct]} ${aAct}`;
-            document.getElementById('count-personal').innerText = `${personal.length} Trabajadores`;
-        }
-
-        window.showSection = (id) => {
-            document.querySelectorAll('section').forEach(s => s.classList.add('hidden'));
-            document.getElementById(id).classList.remove('hidden');
-            document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
-            document.getElementById('nav-' + id).classList.add('active');
-        };
-
-        window.renderPersonal = () => {
-            const list = document.getElementById('lista-personal');
-            const groupsContainer = document.getElementById('grupos-asistencia');
-            list.innerHTML = "";
-            groupsContainer.innerHTML = "";
-
-            const sedes = ["Moche", "Piura", "Cajamarca"];
-            
-            sedes.forEach(sede => {
-                const filt = personal.filter(p => p.sede === sede);
-                // Render en Gestión
-                filt.forEach((p, realIdx) => {
-                    const idx = personal.indexOf(p);
-                    list.innerHTML += `
-                        <div class="glass-card p-6 flex flex-col justify-between">
-                            <div>
-                                <div class="flex justify-between items-start mb-4">
-                                    <span class="text-[10px] font-black bg-slate-100 px-2 py-1 rounded text-slate-500 uppercase">${p.tipo}</span>
-                                    <div class="flex gap-2">
-                                        <button onclick="editPersonal(${idx})" class="text-slate-400 hover:text-blue-500"><i class="fas fa-edit"></i></button>
-                                        <button onclick="deletePersonal(${idx})" class="text-slate-400 hover:text-rose-500"><i class="fas fa-trash"></i></button>
-                                    </div>
-                                </div>
-                                <h4 class="font-black text-slate-800 text-lg leading-tight uppercase">${p.apePat} ${p.apeMat}, ${p.nombre}</h4>
-                                <p class="text-xs text-slate-400 mt-1 font-bold">DNI: ${p.dni}</p>
-                            </div>
-                            <div class="mt-6 pt-4 border-t border-slate-50 flex items-center gap-2">
-                                <i class="fas fa-map-marker-alt text-slate-300"></i>
-                                <span class="text-xs font-bold text-slate-600">${p.sede}</span>
-                            </div>
-                        </div>
-                    `;
-                });
-
-                // Render en Asistencia
-                if(filt.length > 0) {
-                    const groupHtml = `
-                        <div class="mb-8">
-                            <h3 class="text-xs font-black text-slate-400 tracking-[0.2em] mb-4 uppercase flex items-center gap-3">
-                                <span class="w-8 h-[2px] bg-slate-200"></span> SEDE ${sede}
-                            </h3>
-                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                ${filt.map(p => {
-                                    const idx = personal.indexOf(p);
-                                    return `
-                                        <div onclick="openAsistencia(${idx})" class="glass-card p-5 cursor-pointer hover:border-slate-400 transition-all group">
-                                            <div class="flex justify-between items-center">
-                                                <div>
-                                                    <h4 class="font-bold text-slate-800 group-hover:text-blue-600 transition-colors uppercase text-sm">${p.apePat} ${p.nombre}</h4>
-                                                    <p class="text-[10px] text-slate-400 font-bold">${p.dni}</p>
-                                                </div>
-                                                <i class="fas fa-chevron-right text-slate-200 group-hover:translate-x-1 transition-transform"></i>
-                                            </div>
-                                        </div>
-                                    `;
-                                }).join('')}
-                            </div>
-                        </div>
-                    `;
-                    groupsContainer.innerHTML += groupHtml;
-                }
-            });
-        };
-
-        // --- GESTIÓN DE PERSONAL ---
-        window.openModal = (idx = -1) => {
-            currentIdx = idx;
-            document.getElementById('form-personal').reset();
-            document.getElementById('modal-personal-title').innerText = idx === -1 ? "NUEVO TRABAJADOR" : "EDITAR TRABAJADOR";
-            if (idx !== -1) {
-                const p = personal[idx];
-                document.getElementById('f-nombre').value = p.nombre;
-                document.getElementById('f-apePat').value = p.apePat;
-                document.getElementById('f-apeMat').value = p.apeMat;
-                document.getElementById('f-dni').value = p.dni;
-                document.getElementById('f-sede').value = p.sede;
-                document.getElementById('f-tipo').value = p.tipo;
-            }
-            document.getElementById('modal-personal').style.display = 'flex';
-        };
-
-        window.closeModal = () => document.getElementById('modal-personal').style.display = 'none';
-
-        window.savePersonal = async () => {
-            const p = {
-                nombre: document.getElementById('f-nombre').value,
-                apePat: document.getElementById('f-apePat').value,
-                apeMat: document.getElementById('f-apeMat').value,
-                dni: document.getElementById('f-dni').value,
-                sede: document.getElementById('f-sede').value,
-                tipo: document.getElementById('f-tipo').value,
-                registroAsis: currentIdx === -1 ? [] : personal[currentIdx].registroAsis
-            };
-            if (currentIdx === -1) personal.push(p);
-            else personal[currentIdx] = p;
-            await sync();
-            closeModal();
-        };
-
-        window.editPersonal = (idx) => openModal(idx);
-        window.deletePersonal = async (idx) => { if(confirm("¿Eliminar trabajador?")) { personal.splice(idx, 1); await sync(); } };
-
-        // --- CONTROL DE ASISTENCIA ---
-        window.openAsistencia = (idx) => {
-            currentIdx = idx;
-            const p = personal[idx];
-            document.getElementById('at-nombre-tit').innerText = `${p.apePat} ${p.apeMat}, ${p.nombre}`;
-            const body = document.getElementById('asistencia-mes-body');
-            body.innerHTML = "";
-            
-            const diasMes = new Date(aAct, mAct + 1, 0).getDate();
-            for (let i = 1; i <= diasMes; i++) {
-                const fe = new Date(aAct, mAct, i);
-                const diaSem = fe.getDay();
-                const r = (p.registroAsis && p.registroAsis[i - 1]) ? p.registroAsis[i - 1] : { status: 'lab', in: "00:00", out: "00:00", refri: 0, h25: 0, h35: 0, h100: 0, debe: 0, sedeApoyo: p.sede };
-                
-                body.innerHTML += `
-                    <tr class="text-center group hover:bg-slate-50 transition-colors">
-                        <td class="p-4 text-left font-bold text-slate-500 text-xs">${i} ${["DOM", "LUN", "MAR", "MIE", "JUE", "VIE", "SAB"][diaSem]}</td>
-                        <td>
-                            <select class="status-sel bg-transparent border-none font-bold text-xs focus:ring-0" onchange="calcFila(this)">
-                                <option value="lab" ${r.status === 'lab' ? 'selected' : ''}>LABORÓ</option>
-                                <option value="fal" ${r.status === 'fal' ? 'selected' : ''}>FALTA</option>
-                                <option value="fer" ${r.status === 'fer' ? 'selected' : ''}>FER/DOM</option>
-                                <option value="perm" ${r.status === 'perm' ? 'selected' : ''}>PERMISO</option>
-                                <option value="vac" ${r.status === 'vac' ? 'selected' : ''}>VACACIONES</option>
-                                <option value="susp" ${r.status === 'susp' ? 'selected' : ''}>SUSPENSIÓN</option>
-                            </select>
-                        </td>
-                        <td><input type="text" class="t-sede w-16 text-center border-none bg-transparent text-[10px] font-bold" value="${r.sedeApoyo || p.sede}"></td>
-                        <td><input type="time" class="t-in w-24 border-none bg-transparent text-xs font-medium" value="${r.in}" onchange="calcFila(this)"></td>
-                        <td><input type="time" class="t-out w-24 border-none bg-transparent text-xs font-medium" value="${r.out}" onchange="calcFila(this)"></td>
-                        <td><input type="number" step="0.5" class="t-ref w-12 border-none bg-transparent text-xs text-center" value="${r.refri}" onchange="calcFila(this)"></td>
-                        <td><input type="number" step="0.5" class="t-perm w-12 border-none bg-transparent text-xs text-center" value="${r.perm || 0}" onchange="calcFila(this)"></td>
-                        <td class="font-bold text-blue-600 t-25 text-xs">${r.h25 || 0}</td>
-                        <td class="font-bold text-blue-600 t-35 text-xs">${r.h35 || 0}</td>
-                        <td class="font-bold text-blue-600 t-100 text-xs">${r.h100 || 0}</td>
-                        <td class="font-bold text-orange-600 t-debe text-xs">${r.debe || 0}</td>
-                    </tr>
-                `;
-            }
-            document.getElementById('modal-asistencia').classList.remove('hidden');
-        };
-
-        window.calcFila = (el) => {
-            const row = el.closest('tr');
-            const status = row.querySelector('.status-sel').value;
-            const inT = row.querySelector('.t-in').value;
-            const outT = row.querySelector('.t-out').value;
-            const ref = parseFloat(row.querySelector('.t-ref').value || 0);
-            const perm = parseFloat(row.querySelector('.t-perm').value || 0);
-            const p = personal[currentIdx];
-            const dStr = row.querySelector('td').innerText.split(' ')[0];
-            const diaSem = new Date(aAct, mAct, parseInt(dStr)).getDay();
-            const teo = getHorarioTeorico(row.querySelector('.t-sede').value, p.tipo, diaSem);
-            
-            let h25 = 0, h35 = 0, h100 = 0, debe = 0;
-            const trabajadas = (dMins(inT, outT) / 60) - ref;
-
-            if (status === 'lab') {
-                const horasTeoricas = (dMins(teo.in, teo.out) / 60) - teo.refri;
-                const efectivo = trabajadas + perm;
-                if (efectivo > horasTeoricas) {
-                    let extra = efectivo - horasTeoricas;
-                    h25 = Math.min(2, extra);
-                    h35 = Math.max(0, extra - 2);
-                } else if (efectivo < horasTeoricas) {
-                    debe = horasTeoricas - efectivo;
-                }
-            } else if (status === 'fal') {
-                debe = (dMins(teo.in, teo.out) / 60) - teo.refri;
-            } else if (status === 'fer') {
-                h100 = trabajadas > 0 ? trabajadas : 0;
-            }
-
-            row.querySelector('.t-25').innerText = h25.toFixed(1);
-            row.querySelector('.t-35').innerText = h35.toFixed(1);
-            row.querySelector('.t-100').innerText = h100.toFixed(1);
-            row.querySelector('.t-debe').innerText = debe.toFixed(1);
-        };
-
-        window.closeAsistenciaModal = () => document.getElementById('modal-asistencia').classList.add('hidden');
-
-        window.guardarAsistenciaMes = async () => {
-            const rows = document.querySelectorAll('#asistencia-mes-body tr');
-            const registro = [];
-            rows.forEach(row => {
-                registro.push({
-                    status: row.querySelector('.status-sel').value,
-                    sedeApoyo: row.querySelector('.t-sede').value,
-                    in: row.querySelector('.t-in').value,
-                    out: row.querySelector('.t-out').value,
-                    refri: parseFloat(row.querySelector('.t-ref').value || 0),
-                    perm: parseFloat(row.querySelector('.t-perm').value || 0),
-                    h25: parseFloat(row.querySelector('.t-25').innerText),
-                    h35: parseFloat(row.querySelector('.t-35').innerText),
-                    h100: parseFloat(row.querySelector('.t-100').innerText),
-                    debe: parseFloat(row.querySelector('.t-debe').innerText)
-                });
-            });
-            personal[currentIdx].registroAsis = registro;
-            await sync();
-            closeAsistenciaModal();
-        };
-
-        // --- HISTORIAL Y EXCEL ---
-        window.renderHistorial = () => {
-            const list = document.getElementById('lista-historial');
-            const term = (document.getElementById('search-historial').value || "").toLowerCase();
-            const filt = historial.filter(h => (h.mes + " " + h.anio).toLowerCase().includes(term));
-            if (!filt.length) { list.innerHTML = '<p class="text-slate-400 italic">No hay historial.</p>'; return; }
-            list.innerHTML = filt.map(h => `
-                <div class="glass-card p-6 flex justify-between items-center">
-                    <div><h4 class="font-black text-slate-800 text-lg">${h.mes} ${h.anio}</h4><p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Cerrado: ${h.timestamp}</p></div>
-                    <div class="flex gap-2">
-                        <button onclick="descargarHistorico(${h.id})" class="bg-emerald-50 text-emerald-600 px-4 py-2 rounded-xl text-xs font-bold hover:bg-emerald-100 transition-colors"><i class="fas fa-file-excel mr-2"></i>EXCEL</button>
-                        <button onclick="eliminarHistorico(${h.id})" class="text-rose-400 hover:text-rose-600 px-2 transition-colors"><i class="fas fa-trash"></i></button>
-                    </div>
-                </div>`).join('');
-        };
-
-        window.eliminarHistorico = async (id) => { if (confirm("¿Eliminar este registro del archivo?")) { historial = historial.filter(x => x.id !== id); await sync(); } };
-        window.descargarHistorico = (id) => { const item = historial.find(x => x.id === id); if (item) window.exportToExcel(item.data, item.mes, item.anio); };
-
-        window.exportToExcel = (customData = null, customMes = null, customAnio = null) => {
-            const targetData = customData || personal;
-            const mLabel = customMes || MESES[mAct], aLabel = customAnio || aAct;
-            const wb = XLSX.utils.book_new();
-            const mesIdx = customMes ? MESES.indexOf(customMes) : mAct;
-            const anioTarget = customAnio || aAct;
-            const diasMes = new Date(anioTarget, mesIdx + 1, 0).getDate();
-
-            let dataG = [
-                ["RESUMEN DE ASISTENCIA - " + mLabel + " " + aLabel],
-                ["SEDE ORIGEN", "APE. PATERNO", "APE. MATERNO", "NOMBRES", "DNI", "DÍAS LAB.", "DOM. LAB.", "FALTAS", "PERMISOS", "TOTAL HORAS TRAB.(H)", "DEUDA TOTAL(H)", "H.E. 25%", "H.E. 35%", "H.E. 100%"]
-            ];
-            
-            targetData.forEach(p => {
-                let dDeudaTotal = 0, h225 = 0, h335 = 0, h1000 = 0, dl = 0, domL = 0, faltas = 0, hEfectivas = 0;
-                if(p.registroAsis) p.registroAsis.forEach((r, i) => { 
-                    dDeudaTotal += (r.debe||0); h225+=(r.h25||0); h335+=(r.h35||0); h1000+=(r.h100||0); 
-                    const fecha = new Date(anioTarget, mesIdx, i+1);
-                    if(r.status==='lab' || r.status==='perm' || (r.status==='fer' && ((r.h25||0) + (r.h35||0) + (r.h100||0) > 0))) {
-                        dl++; if(fecha.getDay() === 0) domL++;
-                        if(r.in && r.out && r.in !== "00:00") hEfectivas += (dMins(r.in, r.out) / 60) - (r.refri || 0);
-                    }
-                    if(r.status==='fal') faltas++;
-                });
-                dataG.push([p.sede, p.apePat, p.apeMat, p.nombre, p.dni, dl, domL, faltas, "-", hEfectivas.toFixed(2), dDeudaTotal.toFixed(1), h225.toFixed(1), h335.toFixed(1), h1000.toFixed(1)]);
-            });
-            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dataG), "Resumen General");
-
-            ["Moche", "Piura", "Cajamarca"].forEach(sede => {
-                const filt = targetData.filter(p => p.sede === sede);
-                if(!filt.length) return;
-                let head = ["APE. PATERNO", "APE. MATERNO", "NOMBRES", "DNI"];
-                for(let i=1; i<=31; i++) head.push(i.toString());
-                head.push("TOTAL DEUDA (H)", "TOTAL EXTRA (H)");
-                let dataS = [["DETALLE POR SEDE: " + sede.toUpperCase()], head];
-
-                filt.forEach(p => {
-                    let row = [p.apePat, p.apeMat, p.nombre, p.dni], sD = 0, sE = 0;
-                    for(let i=1; i<=31; i++) {
-                        if(i > diasMes) { row.push(""); continue; }
-                        const r = (p.registroAsis && p.registroAsis[i-1]) ? p.registroAsis[i-1] : null;
-                        const diaSem = new Date(anioTarget, mesIdx, i).getDay();
-                        const teo = getHorarioTeorico(r?.sedeApoyo || p.sede, p.tipo, diaSem);
-                        let hBase = (teo.in !== "00:00") ? (dMins(teo.in, teo.out)/60 - teo.refri).toFixed(1) : "0.0";
-                        
-                        let cell = "-";
-                        if(r) {
-                            let ex = (r.h25||0) + (r.h35||0) + (r.h100||0);
-                            let db = (r.debe||0);
-                            let tagSede = (r.sedeApoyo && r.sedeApoyo !== p.sede) ? ` (${r.sedeApoyo})` : "";
-                            
-                            if(r.status === 'lab') {
-                                cell = hBase + tagSede;
-                                if(ex > 0) cell += ` (+${ex.toFixed(1)})`;
-                                if(db > 0) cell += ` (-${db.toFixed(1)})`;
-                            } else if(r.status === 'fal') cell = `F (-${db.toFixed(1)})` + tagSede;
-                            else if(r.status === 'fer') cell = (diaSem===0?"D":"FER") + (ex>0?` (+${ex.toFixed(1)})`:"") + tagSede;
-                            else cell = r.status.toUpperCase() + tagSede;
-                            
-                            sD += db; sE += ex;
-                        }
-                        row.push(cell);
-                    }
-                    row.push(sD.toFixed(1), sE.toFixed(1));
-                    dataS.push(row);
-                });
-                XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dataS), sede);
-            });
-            XLSX.writeFile(wb, `Planilla_${mLabel}_${aLabel}.xlsx`);
-        };
-
-        window.cerrarMes = async () => {
-            if (confirm(`¿Cerrar el mes de ${MESES[mAct]} ${aAct} y archivarlo? El registro actual se reiniciará.`)) {
-                const nuevoH = {
-                    id: Date.now(),
-                    mes: MESES[mAct],
-                    anio: aAct,
-                    timestamp: new Date().toLocaleString(),
-                    data: JSON.parse(JSON.stringify(personal))
-                };
-                historial.push(nuevoH);
-                personal.forEach(p => p.registroAsis = []);
-                await sync();
-                renderHistorial();
-            }
-        };
-
-        window.copiarPrimerHorario = () => {
-            const rows = document.querySelectorAll('#asistencia-mes-body tr');
-            const p = personal[currentIdx];
-            rows.forEach(row => {
-                const dStr = row.querySelector('td').innerText.split(' ')[0];
-                const fe = new Date(aAct, mAct, parseInt(dStr));
-                const isFer = FERIADOS.includes(`${parseInt(dStr)}-${mAct}`);
-                const t = getHorarioTeorico(p.sede, p.tipo, fe.getDay());
-                const sel = row.querySelector('.status-sel');
-                if (fe.getDay() === 0 || isFer) { sel.value = "fer"; } 
-                else { 
-                    sel.value = "lab"; 
-                    row.querySelector('.t-in').value = t.in; 
-                    row.querySelector('.t-out').value = t.out; 
-                    row.querySelector('.t-ref').value = t.refri; 
-                }
-                calcFila(sel);
-            });
-        };
-
-        window.showLogoutConfirm = () => document.getElementById('logoutModal').style.display = 'flex';
-        window.closeLogoutModal = () => document.getElementById('logoutModal').style.display = 'none';
-        window.redirectToLogin = () => {
-            const btn = document.getElementById('confirmLogoutBtn');
-            btn.innerHTML = '<span class="flex items-center justify-center"><svg class="animate-spin h-5 w-5 mr-2" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Saliendo...</span>';
-            btn.disabled = true;
-            setTimeout(() => { window.location.reload(); }, 800);
-        };
-
-        window.onload = () => { 
-            initAuth();
-            renderPersonal(); 
-        };
     </script>
-
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800;900&display=swap');
-        body { font-family: 'Inter', sans-serif; background: #f0f4f8; }
-        .glass-card { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(10px); border-radius: 24px; border: 1px solid rgba(255, 255, 255, 0.3); box-shadow: 0 10px 30px rgba(0,0,0,0.05); }
-        .sidebar-item { transition: all 0.3s; cursor: pointer; border-radius: 16px; margin: 4px 0; font-weight: 800; letter-spacing: -0.02em; }
-        .sidebar-item:hover { background: #e2e8f0; transform: translateX(5px); }
-        .sidebar-item.active { background: #1e293b; color: white; box-shadow: 0 10px 20px rgba(0,0,0,0.15); }
-        .btn-grad { background: linear-gradient(135deg, #2563eb, #1d4ed8); transition: all 0.3s; }
-        .btn-grad:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(37,99,235,0.4); }
-        input[type="time"]::-webkit-calendar-picker-indicator { opacity: 0.5; }
-    </style>
-</head>
-<body class="flex h-screen overflow-hidden text-slate-800">
-
-    <!-- SIDEBAR -->
-    <aside class="w-72 bg-white border-r border-slate-200 flex flex-col p-6 h-full">
-        <div class="mb-10 px-2 flex items-center gap-3">
-            <div class="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center text-white font-black text-xl">GX</div>
-            <div>
-                <h1 class="font-black text-xl leading-none">SISTEMA GX</h1>
-                <span class="text-[10px] font-bold text-slate-400 tracking-widest uppercase">Admin Panel</span>
-            </div>
-        </div>
-
-        <nav class="flex-1 space-y-2">
-            <div onclick="showSection('asistencia')" class="sidebar-item active p-4 flex items-center gap-4 text-sm" id="nav-asistencia">
-                <i class="fas fa-calendar-check text-lg"></i> ASISTENCIA
-            </div>
-            <div onclick="showSection('personal')" class="sidebar-item p-4 flex items-center gap-4 text-sm" id="nav-personal">
-                <i class="fas fa-users text-lg"></i> PERSONAL
-            </div>
-            <div onclick="showSection('historial')" class="sidebar-item p-4 flex items-center gap-4 text-sm" id="nav-historial">
-                <i class="fas fa-archive text-lg"></i> ARCHIVO
-            </div>
-        </nav>
-
-        <button onclick="showLogoutConfirm()" class="mt-auto p-4 text-rose-500 font-black text-xs tracking-widest hover:bg-rose-50 rounded-2xl flex items-center justify-between">
-            SALIR DEL SISTEMA <i class="fas fa-power-off"></i>
-        </button>
-    </aside>
-
-    <!-- MAIN CONTENT -->
-    <main class="flex-1 overflow-y-auto p-10 relative">
-        
-        <!-- ASISTENCIA -->
-        <section id="asistencia">
-            <div class="flex justify-between items-end mb-10">
-                <div>
-                    <p class="text-slate-400 font-bold text-[10px] uppercase tracking-widest mb-1">Registro Mensual</p>
-                    <h2 class="text-4xl font-black text-slate-900 flex items-center gap-4">
-                        <span id="mes-actual-label">...</span>
-                        <span class="text-sm bg-slate-200 px-3 py-1 rounded-full font-bold" id="count-personal">...</span>
-                    </h2>
-                </div>
-                <div class="flex gap-3">
-                    <button onclick="exportToExcel()" class="bg-emerald-600 text-white px-6 py-3 rounded-2xl font-black text-xs tracking-widest hover:bg-emerald-700 shadow-lg shadow-emerald-200 flex items-center gap-2">
-                        <i class="fas fa-file-excel"></i> DESCARGAR EXCEL
-                    </button>
-                    <button onclick="cerrarMes()" class="bg-slate-900 text-white px-6 py-3 rounded-2xl font-black text-xs tracking-widest hover:bg-slate-800 shadow-lg flex items-center gap-2">
-                        <i class="fas fa-lock"></i> CERRAR MES
-                    </button>
-                </div>
-            </div>
-            <div id="grupos-asistencia"></div>
-        </section>
-
-        <!-- PERSONAL -->
-        <section id="personal" class="hidden">
-            <div class="flex justify-between items-end mb-10">
-                <div>
-                    <p class="text-slate-400 font-bold text-[10px] uppercase tracking-widest mb-1">Recursos Humanos</p>
-                    <h2 class="text-4xl font-black text-slate-900">GESTIÓN DE PERSONAL</h2>
-                </div>
-                <button onclick="openModal()" class="bg-slate-900 text-white px-6 py-4 rounded-2xl font-black text-xs tracking-widest hover:bg-slate-800 shadow-xl flex items-center gap-3">
-                    <i class="fas fa-user-plus"></i> AGREGAR TRABAJADOR
-                </button>
-            </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="lista-personal"></div>
-        </section>
-
-        <!-- HISTORIAL -->
-        <section id="historial" class="hidden">
-            <div class="mb-10">
-                <p class="text-slate-400 font-bold text-[10px] uppercase tracking-widest mb-1">Archivo General</p>
-                <h2 class="text-4xl font-black text-slate-900 mb-6">HISTORIAL MENSUAL</h2>
-                <div class="glass-card p-4 max-w-xl flex items-center gap-4">
-                    <i class="fas fa-search text-slate-300"></i>
-                    <input type="text" id="search-historial" oninput="renderHistorial()" placeholder="Buscar por mes o año..." class="bg-transparent border-none w-full focus:ring-0 font-bold">
-                </div>
-            </div>
-            <div class="space-y-4" id="lista-historial"></div>
-        </section>
-    </main>
-
-    <!-- MODAL PERSONAL -->
-    <div id="modal-personal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm hidden flex items-center justify-center z-50 p-6">
-        <div class="glass-card w-full max-w-lg p-10 bg-white">
-            <div class="flex justify-between items-center mb-8">
-                <h3 id="modal-personal-title" class="text-2xl font-black text-slate-900">NUEVO TRABAJADOR</h3>
-                <button onclick="closeModal()" class="text-slate-300 hover:text-slate-900"><i class="fas fa-times text-xl"></i></button>
-            </div>
-            <form id="form-personal" class="space-y-6">
-                <div class="grid grid-cols-2 gap-4">
-                    <div class="space-y-1">
-                        <label class="text-[10px] font-black text-slate-400 uppercase">Nombre</label>
-                        <input id="f-nombre" type="text" class="w-full bg-slate-50 border-none rounded-xl p-3 font-bold" required>
-                    </div>
-                    <div class="space-y-1">
-                        <label class="text-[10px] font-black text-slate-400 uppercase">Apellido Pat.</label>
-                        <input id="f-apePat" type="text" class="w-full bg-slate-50 border-none rounded-xl p-3 font-bold" required>
-                    </div>
-                </div>
-                <div class="grid grid-cols-2 gap-4">
-                    <div class="space-y-1">
-                        <label class="text-[10px] font-black text-slate-400 uppercase">Apellido Mat.</label>
-                        <input id="f-apeMat" type="text" class="w-full bg-slate-50 border-none rounded-xl p-3 font-bold">
-                    </div>
-                    <div class="space-y-1">
-                        <label class="text-[10px] font-black text-slate-400 uppercase">DNI</label>
-                        <input id="f-dni" type="text" class="w-full bg-slate-50 border-none rounded-xl p-3 font-bold" required>
-                    </div>
-                </div>
-                <div class="grid grid-cols-2 gap-4">
-                    <div class="space-y-1">
-                        <label class="text-[10px] font-black text-slate-400 uppercase">Sede</label>
-                        <select id="f-sede" class="w-full bg-slate-50 border-none rounded-xl p-3 font-bold">
-                            <option value="Moche">Moche</option>
-                            <option value="Piura">Piura</option>
-                            <option value="Cajamarca">Cajamarca</option>
-                        </select>
-                    </div>
-                    <div class="space-y-1">
-                        <label class="text-[10px] font-black text-slate-400 uppercase">Cargo/Tipo</label>
-                        <select id="f-tipo" class="w-full bg-slate-50 border-none rounded-xl p-3 font-bold">
-                            <option value="OPERARIO">OPERARIO</option>
-                            <option value="ADMINISTRATIVO">ADMINISTRATIVO</option>
-                        </select>
-                    </div>
-                </div>
-                <button type="button" onclick="savePersonal()" class="w-full bg-slate-900 text-white p-5 rounded-2xl font-black text-xs tracking-widest shadow-xl shadow-slate-200 mt-4">GUARDAR INFORMACIÓN</button>
-            </form>
-        </div>
-    </div>
-
-    <!-- MODAL ASISTENCIA DETALLE -->
-    <div id="modal-asistencia" class="fixed inset-0 bg-slate-900/60 backdrop-blur-md hidden flex items-center justify-center z-50 p-6 overflow-hidden">
-        <div class="glass-card w-full max-w-[95vw] h-full max-h-[90vh] bg-white flex flex-col overflow-hidden">
-            <div class="p-8 border-b flex justify-between items-center shrink-0">
-                <div>
-                    <h3 id="at-nombre-tit" class="text-3xl font-black text-slate-900">...</h3>
-                    <p class="text-slate-400 font-bold text-xs uppercase tracking-widest mt-1">Control de Asistencia Mensual</p>
-                </div>
-                <div class="flex gap-4 items-center">
-                    <button onclick="copiarPrimerHorario()" class="bg-blue-50 text-blue-600 px-6 py-3 rounded-2xl font-black text-xs tracking-widest border border-blue-100 flex items-center gap-2">
-                        <i class="fas fa-magic"></i> LLENADO AUTOMÁTICO
-                    </button>
-                    <button onclick="closeAsistenciaModal()" class="text-slate-400 hover:text-slate-900 transition-colors"><i class="fas fa-times text-2xl"></i></button>
-                </div>
-            </div>
-            <div class="flex-1 overflow-auto p-8">
-                <table class="w-full border-separate border-spacing-0">
-                    <thead class="sticky top-0 bg-white z-10">
-                        <tr class="text-[10px] font-black text-slate-400 uppercase text-center border-b">
-                            <th class="p-4 text-left">Día</th>
-                            <th>Estado</th>
-                            <th>Sede Apoyo</th>
-                            <th>Entrada</th>
-                            <th>Salida</th>
-                            <th>Refri(h)</th>
-                            <th>Perm(h)</th>
-                            <th>25%</th>
-                            <th>35%</th>
-                            <th>100%</th>
-                            <th class="text-orange-600">Deuda(h)</th>
-                        </tr>
-                    </thead>
-                    <tbody id="asistencia-mes-body" class="divide-y divide-slate-100"></tbody>
-                </table>
-            </div>
-            <div class="p-8 border-t bg-slate-50 flex justify-end gap-3 shrink-0">
-                <button onclick="closeAsistenciaModal()" class="px-8 py-4 font-black text-xs text-slate-400 tracking-widest">DESCARTAR</button>
-                <button onclick="guardarAsistenciaMes()" class="bg-slate-900 text-white px-10 py-4 rounded-2xl font-black text-xs tracking-widest shadow-xl shadow-slate-200">GUARDAR REGISTRO MENSUAL</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- MODAL LOGOUT -->
-    <div id="logoutModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-md hidden items-center justify-center z-[100]">
-        <div class="bg-white rounded-3xl p-10 max-w-sm w-full shadow-2xl text-center">
-            <div class="w-20 h-20 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center text-3xl mx-auto mb-6">
-                <i class="fas fa-sign-out-alt"></i>
-            </div>
-            <h3 class="text-2xl font-black text-slate-800 mb-2">¿Cerrar Sesión?</h3>
-            <p class="text-slate-500 text-sm font-medium mb-8">Tus cambios se guardan automáticamente en la nube.</p>
-            <div class="flex flex-col gap-3">
-                <button id="confirmLogoutBtn" onclick="redirectToLogin()" class="bg-rose-500 text-white py-4 rounded-2xl font-black text-xs tracking-widest hover:bg-rose-600 transition-all shadow-lg shadow-rose-200">
-                    CERRAR SESIÓN AHORA
-                </button>
-                <button onclick="closeLogoutModal()" class="py-4 text-slate-400 font-bold text-xs tracking-widest">CANCELAR</button>
-            </div>
-        </div>
-    </div>
-
 </body>
 </html>
